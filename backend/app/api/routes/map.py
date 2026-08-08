@@ -5,6 +5,7 @@ from app.api.deps import DbSession
 from app.config import settings
 from app.models import Submission, SubmissionStatus, User
 from app.schemas import MapOut, MapPatch
+from app.services import glyphs
 
 router = APIRouter(prefix="/map", tags=["map"])
 
@@ -37,6 +38,13 @@ def read_patches(
     total = query.count()
     rows = query.order_by(Submission.submitted_at.desc()).limit(limit).all()
 
+    # Lazy backfill: rows from before glyphs existed grow one on first sight.
+    if any(s.glyph_svg is None for s, _ in rows):
+        for s, _ in rows:
+            if s.glyph_svg is None:
+                s.glyph_svg = glyphs.for_submission(s)
+        db.commit()
+
     return MapOut(
         center=(settings.map_center_lat, settings.map_center_lng),
         patch_count=total,
@@ -50,6 +58,7 @@ def read_patches(
                 total_score=s.total_score,
                 quality_score=s.quality_score,
                 submitted_at=s.submitted_at,
+                glyph_svg=s.glyph_svg,
             )
             for s, u in rows
         ],

@@ -86,6 +86,7 @@ class SubmissionOut(ORMModel):
     palette: list[str] | None = None
     features: list[str] | None = None
     verdict_source: str | None = None
+    glyph_svg: str | None = None
 
 
 class LeaderboardEntry(BaseModel):
@@ -127,6 +128,7 @@ class MapPatch(BaseModel):
     total_score: float
     quality_score: float
     submitted_at: datetime
+    glyph_svg: str | None = None
 
 
 class MapOut(BaseModel):

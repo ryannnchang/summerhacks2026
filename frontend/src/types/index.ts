@@ -61,6 +61,8 @@ export interface Submission {
   palette: string[] | null
   features: string[] | null
   verdict_source: 'gemini' | 'heuristic' | null
+  /** Server-generated procedural SVG; null only on rejected submissions. */
+  glyph_svg: string | null
 }
 
 export interface LeaderboardEntry {
@@ -100,6 +102,7 @@ export interface MapPatch {
   total_score: number
   quality_score: number
   submitted_at: string
+  glyph_svg: string | null
 }
 
 export interface MapData {

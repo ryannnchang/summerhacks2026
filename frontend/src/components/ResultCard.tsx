@@ -32,6 +32,19 @@ export function ResultCard({ submission, previewUrl }: Props) {
           >
             {verified ? 'VERIFIED' : 'REJECTED'}
           </div>
+
+          {/* The tuft this photo became on the map. Server-generated SVG, safe to inject. */}
+          {verified && submission.glyph_svg && (
+            <div className="absolute bottom-3 left-3 flex items-end gap-2">
+              <div
+                className="w-14 h-14 grass-glyph bg-turf-900/70 rounded-xl p-1"
+                dangerouslySetInnerHTML={{ __html: submission.glyph_svg }}
+              />
+              <p className="font-mono text-[10px] text-chalk bg-turf-900/70 px-2 py-1 rounded-full mb-1">
+                your patch, on the map
+              </p>
+            </div>
+          )}
         </div>
 
         <div className="p-5 flex flex-col items-center text-center gap-2">

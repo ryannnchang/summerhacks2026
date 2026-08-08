@@ -58,12 +58,23 @@ export function GrassMap({ center, zoom, patches, focus, onSelect }: Props) {
     group.clearLayers()
 
     for (const patch of patches) {
-      const icon = L.divIcon({
-        className: 'grass-pin',
-        html: '<span class="grass-pin__dot"></span>',
-        iconSize: [20, 20],
-        iconAnchor: [10, 10],
-      })
+      // Server-generated procedural SVG — better grass grows a bigger tuft.
+      // Fallback dot covers rejected-glyph edge cases and very old rows.
+      const size = 34 + Math.round((patch.quality_score / 100) * 14)
+      const icon = patch.glyph_svg
+        ? L.divIcon({
+            className: 'grass-glyph',
+            html: patch.glyph_svg,
+            iconSize: [size, size],
+            // Anchor at the tuft's base so the grass grows *out of* the geotag.
+            iconAnchor: [size / 2, size - 3],
+          })
+        : L.divIcon({
+            className: 'grass-pin',
+            html: '<span class="grass-pin__dot"></span>',
+            iconSize: [20, 20],
+            iconAnchor: [10, 10],
+          })
 
       L.marker([patch.latitude, patch.longitude], { icon, title: `@${patch.username}` })
         .bindPopup(

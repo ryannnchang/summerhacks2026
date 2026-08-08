@@ -10,6 +10,7 @@ from app.api.deps import CurrentUser, DbSession, GroupMembership
 from app.config import settings
 from app.models import Drop, DropStatus, Submission, SubmissionStatus, User
 from app.schemas import SubmissionOut
+from app.services import glyphs
 from app.services import mural as mural_service
 from app.services.drop_scheduler import as_utc
 from app.services.events import manager
@@ -44,6 +45,7 @@ def _to_out(submission: Submission, username: str | None = None) -> SubmissionOu
         palette=extras.get("palette"),
         features=extras.get("features"),
         verdict_source=submission.verdict_source,
+        glyph_svg=submission.glyph_svg,
     )
 
 
@@ -130,7 +132,8 @@ async def submit_grass(
         membership.total_score += submission.total_score
         membership.streak += 1
         db.add(submission)
-        db.flush()
+        db.flush()  # assigns the id, which seeds the glyph
+        submission.glyph_svg = glyphs.for_submission(submission)
         mural_service.place(db, submission)
     else:
         submission.status = SubmissionStatus.REJECTED

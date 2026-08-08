@@ -123,5 +123,9 @@ class Submission(Base):
     features_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     verdict_source: Mapped[str | None] = mapped_column(String(16), nullable=True)
 
+    # Procedural SVG drawn from the judge's signals; the map renders this as
+    # the marker. Generated at submit time, backfilled lazily by the map route.
+    glyph_svg: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     user: Mapped[User] = relationship(back_populates="submissions")
     drop: Mapped[Drop] = relationship(back_populates="submissions")

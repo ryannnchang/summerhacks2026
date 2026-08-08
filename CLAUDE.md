@@ -128,6 +128,18 @@ Two different global views of the same submissions, both public (no auth):
   share location, in which case the submission still scores and still tiles the mural but never
   appears on the map. `GET /api/map/patches` returns the configured center alongside the patches.
 
+### Glyphs
+
+Every verified submission gets a procedural SVG tuft ([glyphs.py](backend/app/services/glyphs.py))
+drawn from the judge's signals — lushness sets blade count/height, biodiversity sets wildness,
+palette colors the blades, and feature tags grow clover/flowers/moss. Deterministic: seeded by
+submission id, so the same row always draws the same tuft. Generated at submit time (after
+`db.flush()` assigns the id), stored in `Submission.glyph_svg`, and lazily backfilled by the map
+route for rows that predate glyphs. The frontend renders it as the Leaflet `divIcon` marker
+(sized by quality score) with a CSS `drop-shadow` glow, so overlapping markers merge into glowing
+green regions when zoomed out. Nothing user-controlled enters the SVG — palette hexes are
+regex-validated upstream and feature tags are matched, never embedded.
+
 ### Auth
 
 There is none. [deps.py](backend/app/api/deps.py) `current_user()` trusts an `X-User-Id` header.

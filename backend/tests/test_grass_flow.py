@@ -274,3 +274,73 @@ def test_gemini_rejection_gets_default_reason():
 
     assert not merged.is_grass
     assert merged.reason  # never None on a rejection
+
+
+# --- glyphs ---
+
+
+def test_glyph_is_deterministic_valid_svg():
+    from xml.etree import ElementTree
+
+    from app.services.glyphs import make_glyph
+
+    kwargs = dict(
+        palette=["#2d5a27", "#4a7c3c"],
+        features=["clover", "dandelion", "moss"],
+        lushness=80,
+        biodiversity=70,
+    )
+    a = make_glyph(seed=7, **kwargs)
+    assert a == make_glyph(seed=7, **kwargs)  # same seed, same tuft
+    assert a != make_glyph(seed=8, **kwargs)  # different submission, different tuft
+
+    ElementTree.fromstring(a)  # well-formed XML
+    assert a.startswith("<svg") and "<path" in a
+    # tags actually grow flora
+    bare = make_glyph(seed=7, palette=["#2d5a27"], features=[], lushness=30, biodiversity=10)
+    assert a.count("<circle") > bare.count("<circle")
+
+
+def test_submission_grows_a_glyph(client):
+    uid = make_user(client, "gardener")
+    headers = {"X-User-Id": str(uid)}
+    group = client.post("/api/groups", json={"name": "g"}, headers=headers).json()
+    drop = client.post(f"/api/groups/{group['id']}/drops/trigger", headers=headers).json()
+
+    r = client.post(
+        f"/api/groups/{group['id']}/drops/{drop['id']}/submissions",
+        headers=headers,
+        files={"photo": ("g.jpg", fake_grass(), "image/jpeg")},
+        data={"latitude": "43.65", "longitude": "-79.38"},
+    )
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["status"] == "verified"
+    assert body["glyph_svg"] and body["glyph_svg"].startswith("<svg")
+
+    patch = client.get("/api/map/patches").json()["patches"][0]
+    assert patch["glyph_svg"] == body["glyph_svg"]
+
+
+def test_map_backfills_missing_glyphs(client):
+    from app.database import SessionLocal
+    from app.models import Submission
+
+    uid = make_user(client, "legacy")
+    headers = {"X-User-Id": str(uid)}
+    group = client.post("/api/groups", json={"name": "g"}, headers=headers).json()
+    drop = client.post(f"/api/groups/{group['id']}/drops/trigger", headers=headers).json()
+    client.post(
+        f"/api/groups/{group['id']}/drops/{drop['id']}/submissions",
+        headers=headers,
+        files={"photo": ("g.jpg", fake_grass(), "image/jpeg")},
+        data={"latitude": "43.65", "longitude": "-79.38"},
+    )
+
+    # Simulate a row from before glyphs existed.
+    with SessionLocal() as db:
+        db.query(Submission).update({Submission.glyph_svg: None})
+        db.commit()
+
+    patch = client.get("/api/map/patches").json()["patches"][0]
+    assert patch["glyph_svg"] and patch["glyph_svg"].startswith("<svg")
