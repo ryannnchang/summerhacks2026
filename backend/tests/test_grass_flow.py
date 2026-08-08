@@ -466,3 +466,24 @@ def test_elo_settles_per_submission(client):
     board = client.get("/api/leaderboard").json()
     assert [e["username"] for e in board] == ["sharp", "blurry"]  # ranked by elo
     assert board[0]["elo"] > board[1]["elo"]
+
+
+def test_rename_follows_through_to_leaderboard(client):
+    uid = make_user(client, "oldname")
+    make_user(client, "taken")
+
+    # The new name is rejected if someone already holds it.
+    conflict = client.patch(
+        "/api/users/me", headers={"X-User-Id": str(uid)}, json={"username": "taken"}
+    )
+    assert conflict.status_code == 409
+
+    renamed = client.patch(
+        "/api/users/me", headers={"X-User-Id": str(uid)}, json={"username": "newname"}
+    )
+    assert renamed.status_code == 200
+    assert renamed.json()["username"] == "newname"
+    assert renamed.json()["elo"] == 1200  # profile carries the players-row rating
+
+    board = client.get("/api/leaderboard").json()
+    assert {e["username"] for e in board} == {"newname", "taken"}

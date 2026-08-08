@@ -8,6 +8,15 @@ from app.config import settings
 engine = create_engine(
     settings.database_url,
     connect_args={"check_same_thread": False} if settings.database_url.startswith("sqlite") else {},
+    # Supabase's session pooler allows 15 clients TOTAL, shared by every running
+    # backend — each teammate's dev server counts against it. SQLAlchemy's
+    # default (5 + 10 overflow) lets one process hog the whole budget; capping
+    # at 5 lets three backends coexist. pre_ping recovers from pooler resets.
+    **(
+        {}
+        if settings.database_url.startswith("sqlite")
+        else {"pool_size": 3, "max_overflow": 2, "pool_pre_ping": True, "pool_recycle": 300}
+    ),
 )
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 

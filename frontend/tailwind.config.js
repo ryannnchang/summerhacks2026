@@ -49,12 +49,17 @@ export default {
           '0%': { transform: 'translateX(0%)' },
           '100%': { transform: 'translateX(-50%)' },
         },
+        shutter: {
+          '0%': { opacity: '1' },
+          '100%': { opacity: '0' },
+        },
       },
       animation: {
         flipdown: 'flipdown 0.5s ease-in-out',
         scanline: 'scanline 1.8s linear infinite',
         popin: 'popin 0.25s ease-out',
         marquee: 'marquee 12s linear infinite',
+        shutter: 'shutter 0.35s ease-out forwards',
       },
     },
   },

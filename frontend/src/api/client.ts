@@ -75,6 +75,8 @@ export const api = {
       body: json({ supabase_uid: supabaseUid, username, display_name: displayName }),
     }),
   me: () => request<User>('/users/me'),
+  updateMe: (fields: { username?: string; display_name?: string }) =>
+    request<User>('/users/me', { method: 'PATCH', body: json(fields) }),
 
   // groups
   listGroups: () => request<Group[]>('/groups'),

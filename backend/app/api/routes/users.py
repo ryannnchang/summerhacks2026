@@ -3,9 +3,17 @@ from sqlalchemy.exc import IntegrityError
 
 from app.api.deps import CurrentUser, DbSession
 from app.models import Player, User
-from app.schemas import UserCreate, UserLink, UserOut
+from app.schemas import UserCreate, UserLink, UserOut, UserUpdate
 
 router = APIRouter(prefix="/users", tags=["users"])
+
+
+def _with_elo(db: DbSession, user: User) -> UserOut:
+    """UserOut plus the elo from the linked players row, when there is one."""
+    out = UserOut.model_validate(user)
+    if user.supabase_uid and (player := db.get(Player, user.supabase_uid)):
+        out.elo = player.elo
+    return out
 
 
 @router.post("", response_model=UserOut, status_code=status.HTTP_201_CREATED)
@@ -70,8 +78,29 @@ def link_supabase_user(payload: UserLink, db: DbSession) -> User:
 
 
 @router.get("/me", response_model=UserOut)
-def read_me(user: CurrentUser) -> User:
-    return user
+def read_me(user: CurrentUser, db: DbSession) -> UserOut:
+    return _with_elo(db, user)
+
+
+@router.patch("/me", response_model=UserOut)
+def update_me(payload: UserUpdate, user: CurrentUser, db: DbSession) -> UserOut:
+    """Renames the account. The players row mirrors it so the leaderboard follows."""
+    if payload.username and payload.username != user.username:
+        if db.query(User).filter(User.username == payload.username).first():
+            raise HTTPException(status.HTTP_409_CONFLICT, "Username is taken")
+        user.username = payload.username
+    if payload.display_name:
+        user.display_name = payload.display_name
+
+    if user.supabase_uid:
+        player = db.get(Player, user.supabase_uid)
+        if player is not None:
+            player.username = user.username
+            player.display_name = user.display_name
+
+    db.commit()
+    db.refresh(user)
+    return _with_elo(db, user)
 
 
 @router.get("/by-username/{username}", response_model=UserOut)

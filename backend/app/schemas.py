@@ -21,11 +21,24 @@ class UserLink(BaseModel):
     display_name: str | None = Field(default=None, max_length=64)
 
 
+class UserUpdate(BaseModel):
+    """Profile edits. Only the fields present change."""
+
+    username: str | None = Field(
+        default=None, min_length=2, max_length=32, pattern=r"^[a-zA-Z0-9_.-]+$"
+    )
+    display_name: str | None = Field(default=None, max_length=64)
+
+
 class UserOut(ORMModel):
     id: int
     username: str
     display_name: str
     created_at: datetime
+    total_score: float = 0.0
+    streak: int = 0
+    # From the linked players row; None for accounts without a Supabase link.
+    elo: int | None = None
 
 
 # --- groups ---

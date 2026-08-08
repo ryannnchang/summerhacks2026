@@ -3,6 +3,10 @@ export interface User {
   username: string
   display_name: string
   created_at: string
+  total_score: number
+  streak: number
+  /** From the linked players row; null for accounts without a Supabase link. */
+  elo: number | null
 }
 
 export interface Group {

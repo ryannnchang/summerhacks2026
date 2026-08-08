@@ -79,21 +79,10 @@ export function ResultCard({ submission, previewUrl }: Props) {
       </div>
 
       <div className="flex flex-col w-full gap-2.5">
-        {!verified && (
-          <button
-            onClick={() => navigate('/capture')}
-            className="w-full bg-scoreboard hover:bg-scoreboard-dim text-turf-900 font-display text-xl tracking-wide py-3 rounded-xl transition-colors"
-          >
-            TRY AGAIN
-          </button>
-        )}
+        {/* One submission per drop — win or lose, the only way out is forward. */}
         <button
           onClick={() => navigate('/')}
-          className={`w-full font-display text-xl tracking-wide py-3 rounded-xl transition-colors ${
-            verified
-              ? 'bg-scoreboard hover:bg-scoreboard-dim text-turf-900'
-              : 'border border-chalk/20 text-chalk/70 hover:text-chalk'
-          }`}
+          className="w-full bg-scoreboard hover:bg-scoreboard-dim text-turf-900 font-display text-xl tracking-wide py-3 rounded-xl transition-colors"
         >
           BACK TO RANKINGS
         </button>
