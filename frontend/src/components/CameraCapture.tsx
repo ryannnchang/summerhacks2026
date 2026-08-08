@@ -14,6 +14,8 @@ export function CameraCapture({ onCapture, disabled }: Props) {
 
   const [cameraReady, setCameraReady] = useState(false)
   const [cameraError, setCameraError] = useState<string | null>(null)
+  // Incremented per snap; keying the overlay on it replays the flash animation.
+  const [flash, setFlash] = useState(0)
 
   useEffect(() => {
     let cancelled = false
@@ -61,9 +63,14 @@ export function CameraCapture({ onCapture, disabled }: Props) {
     const ctx = canvas.getContext('2d')
     if (!ctx) return
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+    setFlash((n) => n + 1)
     canvas.toBlob(
       (blob) => {
-        if (blob) onCapture(new File([blob], 'grass.jpg', { type: 'image/jpeg' }))
+        if (!blob) return
+        const file = new File([blob], 'grass.jpg', { type: 'image/jpeg' })
+        // Let the shutter flash play over the live frame before the parent
+        // swaps this component out for the confirm screen.
+        window.setTimeout(() => onCapture(file), 250)
       },
       'image/jpeg',
       0.9,
@@ -93,6 +100,10 @@ export function CameraCapture({ onCapture, disabled }: Props) {
 
         {/* corner frame marks, like a field-goal viewfinder */}
         <div className="pointer-events-none absolute inset-4 border-2 border-scoreboard/40 rounded-xl" />
+
+        {flash > 0 && (
+          <div key={flash} className="pointer-events-none absolute inset-0 bg-white animate-shutter" />
+        )}
       </div>
 
       <canvas ref={canvasRef} className="hidden" />

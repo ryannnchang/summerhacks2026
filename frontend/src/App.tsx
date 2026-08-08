@@ -8,6 +8,7 @@ import { takeReturnTo } from './lib/session'
 import { AuthPage } from './pages/AuthPage'
 import { CapturePage } from './pages/CapturePage'
 import { MapPage } from './pages/MapPage'
+import { ProfilePage } from './pages/ProfilePage'
 import { RankedPage } from './pages/RankedPage'
 import { ReviewPage } from './pages/ReviewPage'
 
@@ -74,7 +75,7 @@ export default function App() {
   useReturnToAfterSignIn()
 
   // The camera flow is deliberately chrome-free; it has its own back button.
-  const showNav = ['/', '/map'].includes(pathname)
+  const showNav = ['/', '/map', '/profile'].includes(pathname)
 
   return (
     <>
@@ -102,6 +103,14 @@ export default function App() {
           element={
             <RequireSession>
               <ReviewPage />
+            </RequireSession>
+          }
+        />
+        <Route
+          path="/profile"
+          element={
+            <RequireSession>
+              <ProfilePage />
             </RequireSession>
           }
         />

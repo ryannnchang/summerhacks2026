@@ -67,6 +67,19 @@ export function RankedPage() {
     }
   }
 
+  async function reset() {
+    setTriggering(true)
+    setError(null)
+    try {
+      setDrop(await api.resetDrop())
+      await refresh() // has_submitted is per drop id, so the camera reopens
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not reset the drop')
+    } finally {
+      setTriggering(false)
+    }
+  }
+
   return (
     <main className="min-h-screen pb-24 px-5 pt-8 max-w-md mx-auto">
       <header className="flex items-start justify-between gap-3 mb-6">
@@ -88,7 +101,12 @@ export function RankedPage() {
 
       <div className="mb-6">
         {signedIn ? (
-          <DropStatus drop={drop} onTrigger={() => void trigger()} triggering={triggering} />
+          <DropStatus
+            drop={drop}
+            onTrigger={() => void trigger()}
+            onReset={() => void reset()}
+            triggering={triggering}
+          />
         ) : (
           <>
             {/* Signed-out visitors still see the clock — they just can't shoot. */}
@@ -137,7 +155,7 @@ export function RankedPage() {
           <LeaderboardList
             rows={friends}
             currentUsername={user?.username}
-            emptyMessage="Just you so far. Share a group code and your friends show up here."
+            emptyMessage="Just you so far. Add a friend by email and they show up here."
           />
           {/* The only place groups are managed now, and it never blocks play. */}
           <JoinGroupCard onJoined={() => void refresh()} />

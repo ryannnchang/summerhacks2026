@@ -30,6 +30,10 @@ class User(Base):
     display_name: Mapped[str] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
+    # From the Google sign-in, stored at link time so friends can find each
+    # other by address. Nullable: pre-email rows fill in on their next sign-in.
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+
     # Score lives on the player, not on a membership: drops are global, so someone
     # with no group still competes. Global and Friends are the same numbers, the
     # second filtered to people you share a group with.

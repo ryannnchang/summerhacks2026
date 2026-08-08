@@ -2,10 +2,18 @@ from fastapi import APIRouter, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 
 from app.api.deps import CurrentUser, DbSession
-from app.models import Player, User
-from app.schemas import UserCreate, UserLink, UserOut
+from app.models import Group, Membership, Player, User
+from app.schemas import FriendAdd, UserCreate, UserLink, UserOut, UserUpdate
 
 router = APIRouter(prefix="/users", tags=["users"])
+
+
+def _with_elo(db: DbSession, user: User) -> UserOut:
+    """UserOut plus the elo from the linked players row, when there is one."""
+    out = UserOut.model_validate(user)
+    if user.supabase_uid and (player := db.get(Player, user.supabase_uid)):
+        out.elo = player.elo
+    return out
 
 
 @router.post("", response_model=UserOut, status_code=status.HTTP_201_CREATED)
@@ -46,6 +54,8 @@ def link_supabase_user(payload: UserLink, db: DbSession) -> User:
 
     if payload.display_name:
         user.display_name = payload.display_name
+    if payload.email:
+        user.email = payload.email.strip().lower()
 
     player = db.get(Player, payload.supabase_uid)
     if player is None:
@@ -70,8 +80,72 @@ def link_supabase_user(payload: UserLink, db: DbSession) -> User:
 
 
 @router.get("/me", response_model=UserOut)
-def read_me(user: CurrentUser) -> User:
-    return user
+def read_me(user: CurrentUser, db: DbSession) -> UserOut:
+    return _with_elo(db, user)
+
+
+@router.patch("/me", response_model=UserOut)
+def update_me(payload: UserUpdate, user: CurrentUser, db: DbSession) -> UserOut:
+    """Renames the account. The players row mirrors it so the leaderboard follows."""
+    if payload.username and payload.username != user.username:
+        if db.query(User).filter(User.username == payload.username).first():
+            raise HTTPException(status.HTTP_409_CONFLICT, "Username is taken")
+        user.username = payload.username
+    if payload.display_name:
+        user.display_name = payload.display_name
+
+    if user.supabase_uid:
+        player = db.get(Player, user.supabase_uid)
+        if player is not None:
+            player.username = user.username
+            player.display_name = user.display_name
+
+    db.commit()
+    db.refresh(user)
+    return _with_elo(db, user)
+
+
+@router.post("/friends", response_model=UserOut, status_code=status.HTTP_201_CREATED)
+def add_friend(payload: FriendAdd, user: CurrentUser, db: DbSession) -> UserOut:
+    """Befriends another player by their Google email.
+
+    "Friends" means sharing a group, so this drops them into a group the caller
+    owns — created on the spot if they own none. Idempotent: already-friends is
+    a success, not an error.
+    """
+    from app.api.routes.groups import _make_join_code  # avoid a circular import
+
+    email = payload.email.strip().lower()
+    friend = db.query(User).filter(User.email == email).first()
+    if friend is None:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            "No player with that email yet — they need to sign in once first.",
+        )
+    if friend.id == user.id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "That's your own email.")
+
+    group = db.query(Group).filter(Group.owner_id == user.id).first()
+    if group is None:
+        group = Group(
+            name=f"{user.display_name or user.username}'s crew",
+            join_code=_make_join_code(db),
+            owner_id=user.id,
+        )
+        db.add(group)
+        db.flush()
+        db.add(Membership(user_id=user.id, group_id=group.id))
+
+    already = (
+        db.query(Membership)
+        .filter(Membership.group_id == group.id, Membership.user_id == friend.id)
+        .first()
+    )
+    if already is None:
+        db.add(Membership(user_id=friend.id, group_id=group.id))
+    db.commit()
+
+    return _with_elo(db, friend)
 
 
 @router.get("/by-username/{username}", response_model=UserOut)

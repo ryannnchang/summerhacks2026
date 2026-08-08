@@ -3,6 +3,10 @@ export interface User {
   username: string
   display_name: string
   created_at: string
+  total_score: number
+  streak: number
+  /** From the linked players row; null for accounts without a Supabase link. */
+  elo: number | null
 }
 
 export interface Group {
@@ -62,6 +66,8 @@ export interface Submission {
   verdict_source: 'gemini' | 'heuristic' | null
   /** Server-generated procedural SVG; null only on rejected submissions. */
   glyph_svg: string | null
+  /** Rating change from this submission; only set on the upload response. */
+  elo_delta: number | null
 }
 
 export interface LeaderboardEntry {

@@ -14,6 +14,9 @@ export default defineConfig({
   css: { postcss: { plugins: [tailwindcss(), autoprefixer()] } },
   server: {
     port: 5173,
+    // Fail loudly instead of drifting to 5174 — the OAuth redirect URL has to
+    // match Supabase's allowlist exactly, and a silent port bump breaks sign-in.
+    strictPort: true,
     proxy: {
       '/api': { target: 'http://127.0.0.1:8000', changeOrigin: true, ws: true },
       '/uploads': { target: 'http://127.0.0.1:8000', changeOrigin: true },

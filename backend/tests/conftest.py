@@ -22,6 +22,9 @@ os.environ["UPLOAD_DIR"] = str(_TEST_DIR / "uploads")
 # config.Settings prefers this over DATABASE_URL when it is set, and a developer
 # .env will have it set. Clearing it keeps the suite off the real database.
 os.environ["SUPABASE_DB_URL"] = ""
+# Likewise keep test uploads on local disk, off the real storage bucket.
+os.environ["SUPABASE_SERVICE_ROLE_KEY"] = ""
+os.environ["SUPABASE_SERVICE_KEY"] = ""
 
 from app.config import settings  # noqa: E402  (must come after the env is set)
 

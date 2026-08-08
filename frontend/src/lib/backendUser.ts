@@ -35,5 +35,5 @@ function displayNameFor(user: SupabaseUser): string {
  * `on_auth_user_created` trigger is installed in Supabase.
  */
 export async function linkBackendUser(user: SupabaseUser): Promise<User> {
-  return api.linkUser(user.id, usernameFor(user), displayNameFor(user))
+  return api.linkUser(user.id, usernameFor(user), displayNameFor(user), user.email ?? null)
 }

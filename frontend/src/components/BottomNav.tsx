@@ -3,6 +3,7 @@ import { NavLink } from 'react-router-dom'
 const TABS = [
   { to: '/', label: 'RANKED' },
   { to: '/map', label: 'MAP' },
+  { to: '/profile', label: 'PROFILE' },
 ]
 
 export function BottomNav() {

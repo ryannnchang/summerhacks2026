@@ -76,7 +76,12 @@ def make_user(client, username):
     uid = f"{uuid.uuid5(uuid.NAMESPACE_DNS, username)}"
     r = client.post(
         "/api/users/link",
-        json={"supabase_uid": uid, "username": username, "display_name": username},
+        json={
+            "supabase_uid": uid,
+            "username": username,
+            "display_name": username,
+            "email": f"{username}@test.com",
+        },
     )
     assert r.status_code == 200, r.text
     return r.json()["id"]
@@ -121,6 +126,37 @@ def test_full_grass_loop(client):
     mural = r.json()
     assert mural["tile_count"] == 1
     assert mural["tiles"][0]["x"] == 0 and mural["tiles"][0]["y"] == 0
+
+
+def test_reset_closes_live_drop_and_reopens_submissions(client):
+    uid = make_user(client, "demoer")
+    headers = {"X-User-Id": str(uid)}
+
+    first = client.post("/api/drops/trigger", headers=headers).json()
+    url = f"/api/drops/{first['id']}/submissions"
+    r = client.post(url, headers=headers, files={"photo": ("g.jpg", fake_grass(), "image/jpeg")})
+    assert r.status_code == 201, r.text
+
+    # Locked out of the live drop — this is what reset exists to undo.
+    r = client.post(url, headers=headers, files={"photo": ("g.jpg", fake_grass(), "image/jpeg")})
+    assert r.status_code == 409
+
+    r = client.post("/api/drops/reset", headers=headers)
+    assert r.status_code == 200, r.text
+    fresh = r.json()
+    assert fresh["status"] == "active"
+    assert fresh["id"] != first["id"]
+    assert fresh["has_submitted"] is False
+
+    # Old drop is closed, and the same person can submit again on the new one.
+    drops = {d["id"]: d for d in client.get("/api/drops", headers=headers).json()}
+    assert drops[first["id"]]["status"] == "closed"
+    r = client.post(
+        f"/api/drops/{fresh['id']}/submissions",
+        headers=headers,
+        files={"photo": ("g.jpg", fake_grass(), "image/jpeg")},
+    )
+    assert r.status_code == 201, r.text
 
 
 def test_rejects_non_grass(client):
@@ -424,65 +460,93 @@ def test_drop_is_scheduled_inside_the_daytime_window():
         assert chosen >= base + timedelta(hours=hour), "never schedules in the past"
 
 
-def test_elo_is_zero_sum_and_favours_the_winner():
-    from app.services.elo import BASE_RATING, Contender, rate_drop
+def test_elo_rises_above_par_and_falls_below():
+    from app.services.elo import BASE_RATING, K_FACTOR, PAR_SCORE, adjust
 
-    field = [
-        Contender("winner", score=90.0, rating=BASE_RATING),
-        Contender("middle", score=50.0, rating=BASE_RATING),
-        Contender("loser", score=10.0, rating=BASE_RATING),
-    ]
-    new = rate_drop(field)
-
-    assert new["winner"] > BASE_RATING > new["loser"]
-    assert new["middle"] == BASE_RATING  # even record against equal opponents
-    # Points move between players, they are not created.
-    assert sum(new.values()) == pytest.approx(BASE_RATING * 3, abs=2)
+    assert adjust(BASE_RATING, PAR_SCORE) == BASE_RATING  # par changes nothing
+    assert adjust(BASE_RATING, 100.0) == BASE_RATING + K_FACTOR
+    assert adjust(BASE_RATING, 0.0) == BASE_RATING - K_FACTOR
+    # Streak multiplier can push total_score past 100; the gain still caps at +K.
+    assert adjust(BASE_RATING, 140.0) == BASE_RATING + K_FACTOR
+    # Monotone around par.
+    assert adjust(BASE_RATING, 75.0) > BASE_RATING > adjust(BASE_RATING, 25.0)
 
 
-def test_elo_rewards_beating_a_stronger_player():
-    from app.services.elo import Contender, rate_drop
-
-    upset = rate_drop([Contender("david", 90.0, 1000), Contender("goliath", 10.0, 1600)])
-    expected_win = rate_drop([Contender("david", 90.0, 1600), Contender("goliath", 10.0, 1000)])
-
-    assert upset["david"] - 1000 > expected_win["david"] - 1600
-
-
-def test_elo_needs_an_opponent():
-    from app.services.elo import BASE_RATING, Contender, rate_drop
-
-    assert rate_drop([Contender("solo", 90.0, BASE_RATING)]) == {}
-    assert rate_drop([]) == {}
-
-
-def test_drop_close_settles_ratings(client):
-    """Two players in one drop: the better photo gains rating, the other loses it."""
+def test_elo_settles_per_submission(client):
+    """A good photo gains rating on the spot; a rejected one loses it."""
     from app.database import SessionLocal
     from app.models import Player
-    from app.services.drop_scheduler import settle_ratings
 
     good = make_user(client, "sharp")
     bad = make_user(client, "blurry")
     drop = client.post("/api/drops/trigger", headers={"X-User-Id": str(good)}).json()
     url = f"/api/drops/{drop['id']}/submissions"
 
-    client.post(url, headers={"X-User-Id": str(good)},
-                files={"photo": ("g.jpg", fake_grass(), "image/jpeg")})
-    client.post(url, headers={"X-User-Id": str(bad)},
-                files={"photo": ("x.jpg", not_grass(), "image/jpeg")})  # rejected, scores 0
+    win = client.post(url, headers={"X-User-Id": str(good)},
+                      files={"photo": ("g.jpg", fake_grass(), "image/jpeg")}).json()
+    loss = client.post(url, headers={"X-User-Id": str(bad)},
+                       files={"photo": ("x.jpg", not_grass(), "image/jpeg")}).json()
+
+    # The upload response carries the rating change the player just earned.
+    assert win["elo_delta"] > 0 > loss["elo_delta"]  # rejected scores 0 -> below par
 
     db = SessionLocal()
     try:
-        ratings = settle_ratings(db, drop["id"])
-        db.commit()
-        assert len(ratings) == 2
         by_name = {p.username: p.elo for p in db.query(Player).all()}
     finally:
         db.close()
 
-    assert by_name["sharp"] > 1200 > by_name["blurry"]
+    assert by_name["sharp"] == 1200 + win["elo_delta"]
+    assert by_name["blurry"] == 1200 + loss["elo_delta"]
 
     board = client.get("/api/leaderboard").json()
     assert [e["username"] for e in board] == ["sharp", "blurry"]  # ranked by elo
     assert board[0]["elo"] > board[1]["elo"]
+
+
+def test_rename_follows_through_to_leaderboard(client):
+    uid = make_user(client, "oldname")
+    make_user(client, "taken")
+
+    # The new name is rejected if someone already holds it.
+    conflict = client.patch(
+        "/api/users/me", headers={"X-User-Id": str(uid)}, json={"username": "taken"}
+    )
+    assert conflict.status_code == 409
+
+    renamed = client.patch(
+        "/api/users/me", headers={"X-User-Id": str(uid)}, json={"username": "newname"}
+    )
+    assert renamed.status_code == 200
+    assert renamed.json()["username"] == "newname"
+    assert renamed.json()["elo"] == 1200  # profile carries the players-row rating
+
+    board = client.get("/api/leaderboard").json()
+    assert {e["username"] for e in board} == {"newname", "taken"}
+
+
+def test_add_friend_by_email(client):
+    me = make_user(client, "hermit")
+    make_user(client, "buddy")
+    headers = {"X-User-Id": str(me)}
+
+    # Unknown address is a 404, my own is a 400.
+    assert (
+        client.post("/api/users/friends", headers=headers, json={"email": "ghost@test.com"})
+    ).status_code == 404
+    assert (
+        client.post("/api/users/friends", headers=headers, json={"email": "hermit@test.com"})
+    ).status_code == 400
+
+    # Case-insensitive match; a friends group is created on the spot.
+    r = client.post("/api/users/friends", headers=headers, json={"email": "Buddy@Test.com"})
+    assert r.status_code == 201, r.text
+    assert r.json()["username"] == "buddy"
+
+    board = client.get("/api/leaderboard?scope=friends", headers=headers).json()
+    assert {e["username"] for e in board} == {"hermit", "buddy"}
+
+    # Adding twice is a no-op success, not an error.
+    assert (
+        client.post("/api/users/friends", headers=headers, json={"email": "buddy@test.com"})
+    ).status_code == 201

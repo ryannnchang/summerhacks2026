@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from pydantic import model_validator
+from pydantic import AliasChoices, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -24,6 +24,18 @@ class Settings(BaseSettings):
 
     upload_dir: Path = BASE_DIR / "uploads"
     max_upload_bytes: int = 10 * 1024 * 1024
+
+    # Supabase Storage for submission photos. With a service key set, images
+    # upload to this bucket and the db stores their public URLs; without one,
+    # they land on local disk under upload_dir (fine for dev, wiped on redeploy).
+    # The project URL is shared with the frontend, so VITE_SUPABASE_URL works.
+    supabase_url: str | None = Field(
+        None, validation_alias=AliasChoices("SUPABASE_URL", "VITE_SUPABASE_URL")
+    )
+    supabase_service_key: str | None = Field(
+        None, validation_alias=AliasChoices("SUPABASE_SERVICE_KEY", "SUPABASE_SERVICE_ROLE_KEY")
+    )
+    supabase_storage_bucket: str = "grass-photos"
 
     cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
 

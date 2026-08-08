@@ -19,6 +19,20 @@ class UserLink(BaseModel):
     supabase_uid: str = Field(min_length=8, max_length=36)
     username: str = Field(min_length=2, max_length=32, pattern=r"^[a-zA-Z0-9_.-]+$")
     display_name: str | None = Field(default=None, max_length=64)
+    email: str | None = Field(default=None, max_length=255)
+
+
+class FriendAdd(BaseModel):
+    email: str = Field(min_length=3, max_length=255)
+
+
+class UserUpdate(BaseModel):
+    """Profile edits. Only the fields present change."""
+
+    username: str | None = Field(
+        default=None, min_length=2, max_length=32, pattern=r"^[a-zA-Z0-9_.-]+$"
+    )
+    display_name: str | None = Field(default=None, max_length=64)
 
 
 class UserOut(ORMModel):
@@ -26,6 +40,10 @@ class UserOut(ORMModel):
     username: str
     display_name: str
     created_at: datetime
+    total_score: float = 0.0
+    streak: int = 0
+    # From the linked players row; None for accounts without a Supabase link.
+    elo: int | None = None
 
 
 # --- groups ---
@@ -94,6 +112,10 @@ class SubmissionOut(ORMModel):
     features: list[str] | None = None
     verdict_source: str | None = None
     glyph_svg: str | None = None
+
+    # Rating change from this submission. Only set on the upload response for a
+    # Supabase-linked account; null on listings, where it isn't tracked.
+    elo_delta: int | None = None
 
 
 class LeaderboardEntry(BaseModel):
