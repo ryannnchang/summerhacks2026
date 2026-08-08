@@ -318,11 +318,10 @@ def test_glyph_is_deterministic_valid_svg():
 def test_submission_grows_a_glyph(client):
     uid = make_user(client, "gardener")
     headers = {"X-User-Id": str(uid)}
-    group = client.post("/api/groups", json={"name": "g"}, headers=headers).json()
-    drop = client.post(f"/api/groups/{group['id']}/drops/trigger", headers=headers).json()
+    drop = client.post("/api/drops/trigger", headers=headers).json()
 
     r = client.post(
-        f"/api/groups/{group['id']}/drops/{drop['id']}/submissions",
+        f"/api/drops/{drop['id']}/submissions",
         headers=headers,
         files={"photo": ("g.jpg", fake_grass(), "image/jpeg")},
         data={"latitude": "43.65", "longitude": "-79.38"},
@@ -342,10 +341,9 @@ def test_map_backfills_missing_glyphs(client):
 
     uid = make_user(client, "legacy")
     headers = {"X-User-Id": str(uid)}
-    group = client.post("/api/groups", json={"name": "g"}, headers=headers).json()
-    drop = client.post(f"/api/groups/{group['id']}/drops/trigger", headers=headers).json()
+    drop = client.post("/api/drops/trigger", headers=headers).json()
     client.post(
-        f"/api/groups/{group['id']}/drops/{drop['id']}/submissions",
+        f"/api/drops/{drop['id']}/submissions",
         headers=headers,
         files={"photo": ("g.jpg", fake_grass(), "image/jpeg")},
         data={"latitude": "43.65", "longitude": "-79.38"},
