@@ -1,38 +1,29 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 
 import { api } from '../api/client'
-import { DropBanner } from '../components/DropBanner'
-import { GrassCapture } from '../components/GrassCapture'
-import { Leaderboard } from '../components/Leaderboard'
 import { MemberList } from '../components/MemberList'
-import { useAuth } from '../hooks/useAuth'
-import { useGroupSocket } from '../hooks/useGroupSocket'
-import type { Drop, GroupDetail, LeaderboardEntry, Submission } from '../types'
+import { useSession } from '../hooks/useSession'
+import type { GroupDetail } from '../types'
 
+/**
+ * Group settings: the join code to pass around, and who's in. The scoreboard side of
+ * a group lives on /dashboard and /leaderboard, driven by whichever group is active.
+ */
 export function GroupPage() {
   const { groupId: raw } = useParams()
   const groupId = Number(raw)
-  const { user } = useAuth()
+  const navigate = useNavigate()
+  const { user, groupId: activeGroupId, selectGroup } = useSession()
 
   const [group, setGroup] = useState<GroupDetail | null>(null)
-  const [drop, setDrop] = useState<Drop | null>(null)
-  const [board, setBoard] = useState<LeaderboardEntry[]>([])
-  const [feed, setFeed] = useState<Submission[]>([])
   const [error, setError] = useState<string | null>(null)
-  const [triggering, setTriggering] = useState(false)
+  const [copied, setCopied] = useState(false)
 
   const refresh = useCallback(async () => {
     try {
-      const [detail, current, leaders] = await Promise.all([
-        api.getGroup(groupId),
-        api.currentDrop(groupId),
-        api.leaderboard(groupId),
-      ])
-      setGroup(detail)
-      setDrop(current)
-      setBoard(leaders)
-      if (current) setFeed(await api.dropSubmissions(groupId, current.id))
+      setGroup(await api.getGroup(groupId))
+      setError(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load this group')
     }
@@ -42,107 +33,92 @@ export function GroupPage() {
     void refresh()
   }, [refresh])
 
-  const live = useGroupSocket(Number.isFinite(groupId) ? groupId : null, (event) => {
-    if (event.type === 'drop.started' || event.type === 'drop.closed') {
-      if (event.type === 'drop.started') notifyDrop()
-      void refresh()
-    }
-    if (event.type === 'submission.created') void refresh()
-  })
-
-  async function trigger() {
-    setTriggering(true)
-    setError(null)
-    try {
-      setDrop(await api.triggerDrop(groupId))
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not start a drop')
-    } finally {
-      setTriggering(false)
-    }
+  async function copyCode() {
+    if (!group) return
+    await navigator.clipboard.writeText(group.join_code).catch(() => undefined)
+    setCopied(true)
+    window.setTimeout(() => setCopied(false), 1500)
   }
 
-  if (error && !group) return <main className="page">{error}</main>
-  if (!group) return <main className="page">Loading…</main>
+  if (error && !group) {
+    return (
+      <main className="min-h-screen flex items-center justify-center px-5 pb-24">
+        <p className="text-dirt-light text-sm">{error}</p>
+      </main>
+    )
+  }
 
-  const dropIsOpen = drop?.status === 'active'
+  if (!group) {
+    return (
+      <main className="min-h-screen flex flex-col items-center justify-center gap-3 pb-24">
+        <div className="w-8 h-8 border-2 border-scoreboard border-t-transparent rounded-full animate-spin" />
+        <p className="font-mono text-chalk/50 text-sm">loading the roster…</p>
+      </main>
+    )
+  }
 
   return (
-    <main className="page group-page">
-      <header className="group-page__header">
-        <div>
-          <h1 className="page__title">{group.name}</h1>
-          <p className="card__hint">
-            Join code <code>{group.join_code}</code> · {live ? '🟢 live' : '⚪️ reconnecting'}
-          </p>
-        </div>
-      </header>
-
-      <DropBanner drop={drop} onTrigger={() => void trigger()} triggering={triggering} />
-
-      {dropIsOpen && drop && !drop.has_submitted && (
-        <GrassCapture
-          groupId={groupId}
-          dropId={drop.id}
-          onSubmitted={() => void refresh()}
-        />
-      )}
-
-      <div className="group-page__columns">
-        <section className="card">
-          <h2 className="card__title">Leaderboard</h2>
-          <Leaderboard entries={board} currentUserId={user?.id} />
-        </section>
-
-        <section className="card">
-          <h2 className="card__title">Members</h2>
-          <MemberList
-            members={group.members}
-            ownerId={group.owner_id}
-            currentUserId={user?.id}
-            onAdd={async (username) => {
-              await api.addMember(groupId, username)
-              await refresh()
+    <main className="min-h-screen pb-24 px-5 pt-8">
+      <div className="flex items-center justify-between mb-5">
+        <button
+          onClick={() => navigate('/dashboard')}
+          className="text-chalk/60 hover:text-chalk text-sm font-mono"
+        >
+          ← BACK
+        </button>
+        {group.id !== activeGroupId && (
+          <button
+            onClick={() => {
+              selectGroup(group.id)
+              navigate('/dashboard')
             }}
-            onRemove={async (userId) => {
-              await api.removeMember(groupId, userId)
-              await refresh()
-            }}
-          />
-        </section>
+            className="font-mono text-xs tracking-widest text-scoreboard hover:text-scoreboard-dim transition-colors"
+          >
+            PLAY THIS GROUP
+          </button>
+        )}
       </div>
 
-      {feed.length > 0 && (
-        <section className="card">
-          <h2 className="card__title">This drop</h2>
-          <ul className="feed">
-            {feed.map((s) => (
-              <li key={s.id} className={`feed__item feed__item--${s.status}`}>
-                <img src={s.thumbnail_url} alt={`Grass by ${s.username}`} loading="lazy" />
-                <div>
-                  <strong>@{s.username}</strong>
-                  <p>
-                    {s.status === 'verified'
-                      ? `${s.total_score.toFixed(0)} pts · ${s.response_seconds.toFixed(0)}s`
-                      : s.reject_reason}
-                  </p>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+      <header className="mb-6">
+        <p className="text-chalk/50 text-xs font-mono">
+          {group.member_count} member{group.member_count === 1 ? '' : 's'}
+        </p>
+        <h1 className="font-display text-4xl tracking-wide text-chalk leading-none mt-0.5">
+          {group.name.toUpperCase()}
+        </h1>
+      </header>
 
-      {error && <p className="alert alert--error">{error}</p>}
+      <button
+        onClick={() => void copyCode()}
+        className="w-full bg-turf-800/60 chalk-border rounded-2xl p-5 mb-6 text-left hover:border-scoreboard/60 transition-colors"
+      >
+        <p className="text-chalk/40 text-[10px] font-mono tracking-wide">JOIN CODE — TAP TO COPY</p>
+        <p className="font-mono text-scoreboard font-bold text-3xl tracking-[0.2em] mt-1">
+          {group.join_code}
+        </p>
+        {copied && <p className="text-turf-400 text-xs font-mono mt-1">copied</p>}
+      </button>
+
+      <h2 className="font-display text-2xl tracking-wide text-chalk mb-3">ROSTER</h2>
+      <MemberList
+        members={group.members}
+        ownerId={group.owner_id}
+        currentUserId={user?.id}
+        onAdd={async (username) => {
+          await api.addMember(groupId, username)
+          await refresh()
+        }}
+        onRemove={async (userId) => {
+          await api.removeMember(groupId, userId)
+          await refresh()
+        }}
+      />
+
+      {error && (
+        <p className="text-dirt-light text-sm mt-4" role="alert">
+          {error}
+        </p>
+      )}
     </main>
   )
-}
-
-function notifyDrop() {
-  if (!('Notification' in window)) return
-  if (Notification.permission === 'granted') {
-    new Notification('🌱 Grass drop is live', { body: 'Get outside. The clock is running.' })
-  } else if (Notification.permission !== 'denied') {
-    void Notification.requestPermission()
-  }
 }

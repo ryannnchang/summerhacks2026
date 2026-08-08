@@ -28,5 +28,10 @@ class Settings(BaseSettings):
     # Mural
     mural_columns: int = 24
 
+    # Map — the app opens here. Downtown Toronto.
+    map_center_lat: float = 43.6532
+    map_center_lng: float = -79.3832
+    map_zoom: int = 12
+
 
 settings = Settings()

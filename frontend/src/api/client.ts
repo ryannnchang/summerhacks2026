@@ -1,8 +1,10 @@
+import { getUserId } from '../lib/session'
 import type {
   Drop,
   Group,
   GroupDetail,
   LeaderboardEntry,
+  MapData,
   Member,
   Mural,
   Submission,
@@ -10,16 +12,17 @@ import type {
 } from '../types'
 
 const BASE = '/api'
-const USER_KEY = 'touchgrass.userId'
 
-export function getUserId(): number | null {
-  const raw = localStorage.getItem(USER_KEY)
-  return raw ? Number(raw) : null
-}
-
-export function setUserId(id: number | null): void {
-  if (id === null) localStorage.removeItem(USER_KEY)
-  else localStorage.setItem(USER_KEY, String(id))
+/**
+ * Auth seam.
+ *
+ * The API identifies callers with an `X-User-Id` header — hackathon-grade, the client just
+ * says who it is. The id is whatever `/auth` last stored; with nothing stored, group / drop /
+ * submission calls 401 and the router bounces the visitor back to the auth screen.
+ */
+function authHeader(): Record<string, string> {
+  const id = getUserId()
+  return id === null ? {} : { 'X-User-Id': String(id) }
 }
 
 export class ApiError extends Error {
@@ -33,8 +36,7 @@ export class ApiError extends Error {
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers)
-  const userId = getUserId()
-  if (userId) headers.set('X-User-Id', String(userId))
+  for (const [key, value] of Object.entries(authHeader())) headers.set(key, value)
   if (init.body && !(init.body instanceof FormData)) {
     headers.set('Content-Type', 'application/json')
   }
@@ -92,9 +94,18 @@ export const api = {
     request<Drop>(`/groups/${groupId}/drops/trigger`, { method: 'POST' }),
 
   // submissions
-  submitGrass: (groupId: number, dropId: number, photo: File) => {
+  submitGrass: (
+    groupId: number,
+    dropId: number,
+    photo: File,
+    coords?: { latitude: number; longitude: number },
+  ) => {
     const form = new FormData()
     form.append('photo', photo)
+    if (coords) {
+      form.append('latitude', String(coords.latitude))
+      form.append('longitude', String(coords.longitude))
+    }
     return request<Submission>(`/groups/${groupId}/drops/${dropId}/submissions`, {
       method: 'POST',
       body: form,
@@ -106,6 +117,10 @@ export const api = {
 
   // mural
   mural: () => request<Mural>('/mural'),
+
+  // map (public — works without auth)
+  mapPatches: (sinceHours?: number) =>
+    request<MapData>(`/map/patches${sinceHours ? `?since_hours=${sinceHours}` : ''}`),
 }
 
 export function groupSocketUrl(groupId: number): string {

@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
 from PIL import UnidentifiedImageError
 
 from app import storage
@@ -51,6 +51,8 @@ async def submit_grass(
     user: CurrentUser,
     membership: GroupMembership,
     photo: UploadFile = File(...),
+    latitude: float | None = Form(None, ge=-90, le=90),
+    longitude: float | None = Form(None, ge=-180, le=180),
 ) -> SubmissionOut:
     drop = db.get(Drop, drop_id)
     if drop is None or drop.group_id != group_id:
@@ -96,6 +98,8 @@ async def submit_grass(
         quality_score=verdict.quality,
         response_seconds=round(elapsed, 2),
         dominant_color=verdict.dominant_color,
+        latitude=latitude,
+        longitude=longitude,
         submitted_at=now,
     )
 

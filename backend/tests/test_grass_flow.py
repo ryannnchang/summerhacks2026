@@ -153,3 +153,43 @@ def test_requires_membership(client):
 def test_auth_required(client):
     assert client.get("/api/users/me").status_code == 401
     assert client.get("/api/users/me", headers={"X-User-Id": "999"}).status_code == 401
+
+
+def test_map_patches_only_include_geolocated_grass(client):
+    uid = make_user(client, "mapper")
+    headers = {"X-User-Id": str(uid)}
+    group = client.post("/api/groups", json={"name": "geo"}, headers=headers).json()
+    drop = client.post(f"/api/groups/{group['id']}/drops/trigger", headers=headers).json()
+    url = f"/api/groups/{group['id']}/drops/{drop['id']}/submissions"
+
+    # Trinity Bellwoods, roughly.
+    r = client.post(
+        url,
+        headers=headers,
+        files={"photo": ("g.jpg", fake_grass(), "image/jpeg")},
+        data={"latitude": "43.6465", "longitude": "-79.4130"},
+    )
+    assert r.status_code == 201, r.text
+    assert r.json()["status"] == "verified"
+
+    body = client.get("/api/map/patches").json()
+    assert body["center"] == [43.6532, -79.3832]  # Toronto
+    assert body["patch_count"] == 1
+    patch = body["patches"][0]
+    assert (patch["latitude"], patch["longitude"]) == (43.6465, -79.4130)
+    assert patch["username"] == "mapper"
+
+
+def test_map_skips_submissions_without_coordinates(client):
+    uid = make_user(client, "nogps")
+    headers = {"X-User-Id": str(uid)}
+    group = client.post("/api/groups", json={"name": "nogeo"}, headers=headers).json()
+    drop = client.post(f"/api/groups/{group['id']}/drops/trigger", headers=headers).json()
+    client.post(
+        f"/api/groups/{group['id']}/drops/{drop['id']}/submissions",
+        headers=headers,
+        files={"photo": ("g.jpg", fake_grass(), "image/jpeg")},
+    )
+    # Still counts for score and mural, just not on the map.
+    assert client.get("/api/mural").json()["tile_count"] == 1
+    assert client.get("/api/map/patches").json()["patch_count"] == 0

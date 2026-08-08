@@ -108,3 +108,21 @@ class MuralOut(BaseModel):
     rows: int
     tile_count: int
     tiles: list[MuralTile]
+
+
+# --- map ---
+class MapPatch(BaseModel):
+    submission_id: int
+    latitude: float
+    longitude: float
+    thumbnail_url: str
+    username: str
+    total_score: float
+    quality_score: float
+    submitted_at: datetime
+
+
+class MapOut(BaseModel):
+    center: tuple[float, float]
+    patch_count: int
+    patches: list[MapPatch]

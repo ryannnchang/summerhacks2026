@@ -112,5 +112,9 @@ class Submission(Base):
     mural_y: Mapped[int | None] = mapped_column(Integer, nullable=True)
     dominant_color: Mapped[str | None] = mapped_column(String(7), nullable=True)
 
+    # Where the grass was. Optional — the browser may refuse to share location.
+    latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+
     user: Mapped[User] = relationship(back_populates="submissions")
     drop: Mapped[Drop] = relationship(back_populates="submissions")

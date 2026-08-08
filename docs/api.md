@@ -5,6 +5,9 @@ Base path `/api`. Interactive docs at http://127.0.0.1:8000/docs while the serve
 Every authenticated route reads the caller's identity from the `X-User-Id` header. Routes marked
 **member** additionally require that the caller belongs to the group in the path (403 otherwise).
 
+> The frontend does not send that header yet, so everything except `/map/patches` and `/mural`
+> returns 401 from the browser today. Use `/docs` or curl to exercise the rest.
+
 ## Users
 
 | Method | Path | Auth | Notes |
@@ -75,6 +78,25 @@ A **rejected** submission still returns 201 — the upload succeeded, the grass 
 ```
 
 **GET** `/groups/{gid}/drops/{did}/submissions` — member. Everyone's entries, best score first.
+
+## Map
+
+**GET** `/map/patches?limit=&since_hours=` — public, no auth. Verified submissions that carried
+coordinates. `center` comes from `MAP_CENTER_LAT` / `MAP_CENTER_LNG` (Toronto by default), so the
+frontend doesn't hardcode the city.
+
+```jsonc
+{
+  "center": [43.6532, -79.3832],
+  "patch_count": 1,
+  "patches": [{"submission_id": 1, "latitude": 43.6465, "longitude": -79.413,
+               "thumbnail_url": "...", "username": "mapper",
+               "total_score": 92.3, "quality_score": 87.17, "submitted_at": "..."}]
+}
+```
+
+Coordinates arrive as optional `latitude` / `longitude` form fields on submission. Without them the
+entry scores normally and reaches the mural — it just never appears here.
 
 ## Mural
 

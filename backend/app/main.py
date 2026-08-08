@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.api.routes import drops, groups, mural, submissions, users
+from app.api.routes import drops, groups, map as map_routes, mural, submissions, users
 from app.config import settings
 from app.database import init_db
 from app.services.drop_scheduler import scheduler_loop
@@ -47,6 +47,7 @@ app.include_router(groups.router, prefix="/api")
 app.include_router(drops.router, prefix="/api")
 app.include_router(submissions.router, prefix="/api")
 app.include_router(mural.router, prefix="/api")
+app.include_router(map_routes.router, prefix="/api")
 
 
 @app.get("/api/health", tags=["meta"])

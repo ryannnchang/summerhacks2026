@@ -15,7 +15,7 @@ export function MuralPage() {
       api
         .mural()
         .then(setMural)
-        .catch((err) => setError(err.message))
+        .catch((err: Error) => setError(err.message))
 
     void load()
     const id = window.setInterval(load, REFRESH_MS)
@@ -23,13 +23,23 @@ export function MuralPage() {
   }, [])
 
   return (
-    <main className="page">
-      <h1 className="page__title">The shared patch</h1>
-      <p className="card__hint">
-        Every verified patch of grass, from every group, tiled into one field.
-        {mural && ` ${mural.tile_count} tiles and counting.`}
-      </p>
-      {error && <p className="alert alert--error">{error}</p>}
+    <main className="min-h-screen pb-24 px-5 pt-8">
+      <header className="mb-5">
+        <p className="text-chalk/50 text-xs font-mono">EVERY GROUP, ONE FIELD</p>
+        <h1 className="font-display text-3xl tracking-wide text-chalk leading-none mt-0.5">
+          THE SHARED PATCH
+        </h1>
+        <p className="text-chalk/60 text-sm mt-2">
+          Every verified patch of grass, tiled together.
+          {mural && ` ${mural.tile_count} tiles and counting.`}
+        </p>
+      </header>
+
+      {error && (
+        <p className="text-dirt-light text-sm mb-4" role="alert">
+          {error}
+        </p>
+      )}
       {mural && <MuralGrid mural={mural} />}
     </main>
   )

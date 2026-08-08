@@ -51,7 +51,7 @@ backend/                    FastAPI + SQLAlchemy + SQLite
     database.py             engine + session dependency
     api/
       deps.py               auth + group-membership guards
-      routes/               users, groups, drops (+ WebSocket), submissions, mural
+      routes/               users, groups, drops (+ WebSocket), submissions, mural, map
     services/
       grass_verifier.py     is this actually grass? -> coverage / texture / vibrance
       scoring.py            quality x speed x streak -> points
@@ -66,8 +66,9 @@ frontend/                   React + TypeScript + Vite
   src/
     api/client.ts           typed fetch wrapper, one method per endpoint
     hooks/                  useAuth, useGroupSocket, useCountdown
-    components/             DropBanner, GrassCapture, Leaderboard, MemberList, MuralGrid
-    pages/                  Login, Groups, Group, Mural
+    components/             GrassMap (Leaflet), DropBanner, GrassCapture, Leaderboard,
+                            MemberList, MuralGrid
+    pages/                  Map (landing), Groups, Group, Mural
     types/                  shared types mirroring the API
     styles/index.css        design tokens + all component styles
 
@@ -100,12 +101,20 @@ The return shape is the contract, so swapping in a real vision model later touch
 **Mural.** Every verified submission claims the next cell in a fixed-width grid, so the mural fills
 row by row in submission order. It's global — all groups feed the same field.
 
-## Identity
+**Map.** The landing page is a Leaflet map centred on Toronto (`43.6532, -79.3832`, configurable via
+`MAP_CENTER_LAT` / `MAP_CENTER_LNG`). It plots every verified patch that arrived with coordinates,
+served by the public `GET /api/map/patches`. Location is best-effort: `GrassCapture` asks the
+browser for coordinates and attaches them if granted, but a refusal never blocks the upload — the
+submission still scores and still reaches the mural, it just won't appear on the map.
 
-There is no login screen. The first time you open the app it quietly claims a guest name
-(`guest-4f2a`) and stores the id in `localStorage`, so you land straight on the group list.
-**new identity** in the nav bar mints a fresh user — the easy way to play a second person without
-opening a private window.
+## Auth is not wired up
+
+The frontend sends no identity at all. The API still expects an `X-User-Id` header, so **every
+group, drop, and submission call returns 401** until auth exists. Two things work today without
+it, because they're public: the **map** and the **mural**.
+
+The seam is one function — `authHeader()` in [api/client.ts](frontend/src/api/client.ts). Make it
+return the signed-in user's id and every call starts working; no other file needs to change.
 
 ## Configuration
 
@@ -121,9 +130,8 @@ There's also a **Drop now** button in the UI that fires a drop immediately.
 
 ## Known gaps
 
-- **There is no auth.** Guest users are auto-created and the client just asserts who it is via
-  `X-User-Id`. Fine for a hackathon demo, not for the open internet — see
-  [docs/architecture.md](docs/architecture.md) for what to replace it with.
+- **There is no auth.** The frontend sends no identity; the backend trusts whatever `X-User-Id`
+  it's given. Both halves need work — see [docs/architecture.md](docs/architecture.md).
 - **Single process only.** The scheduler and the WebSocket registry both live in memory, so running
   more than one worker means duplicate drops. Redis pub/sub is the fix.
 - **No EXIF/geo checks.** Nothing stops someone from re-uploading a saved photo. Checking EXIF

@@ -3,15 +3,15 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 
 import App from './App'
-import { AuthProvider } from './hooks/useAuth'
+import { SessionProvider } from './hooks/useSession'
 import './styles/index.css'
 
 createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <BrowserRouter>
-      <AuthProvider>
+      <SessionProvider>
         <App />
-      </AuthProvider>
+      </SessionProvider>
     </BrowserRouter>
   </React.StrictMode>,
 )

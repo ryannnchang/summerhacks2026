@@ -1,51 +1,108 @@
-import { NavLink, Navigate, Route, Routes } from 'react-router-dom'
+import type { ReactNode } from 'react'
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 
-import { useAuth } from './hooks/useAuth'
+import { BottomNav } from './components/BottomNav'
+import { useSession } from './hooks/useSession'
+import { AuthPage } from './pages/AuthPage'
+import { CapturePage } from './pages/CapturePage'
+import { DashboardPage } from './pages/DashboardPage'
 import { GroupPage } from './pages/GroupPage'
 import { GroupsPage } from './pages/GroupsPage'
+import { LeaderboardPage } from './pages/LeaderboardPage'
+import { MapPage } from './pages/MapPage'
 import { MuralPage } from './pages/MuralPage'
+import { ReviewPage } from './pages/ReviewPage'
+
+/** Full-bleed spinner, reused for the boot check and the root redirect. */
+function Warmup() {
+  return (
+    <main className="min-h-screen flex flex-col items-center justify-center gap-3">
+      <div className="w-8 h-8 border-2 border-scoreboard border-t-transparent rounded-full animate-spin" />
+      <p className="font-mono text-chalk/50 text-sm">warming up the field…</p>
+    </main>
+  )
+}
+
+function RequireSession({ children }: { children: ReactNode }) {
+  const { user, loading } = useSession()
+  if (loading) return <Warmup />
+  if (!user) return <Navigate to="/auth" replace />
+  return <>{children}</>
+}
 
 export default function App() {
-  const { user, loading, error, newIdentity } = useAuth()
+  const { user, loading } = useSession()
+  const { pathname } = useLocation()
 
-  if (loading) return <div className="page">Getting you a name…</div>
-
-  if (error || !user) {
-    return (
-      <div className="page">
-        <p className="alert alert--error">
-          {error ?? 'Could not start a session.'} Is the API running on :8000?
-        </p>
-      </div>
-    )
-  }
+  // The bottom nav is the signed-in chrome; the auth screen stands alone.
+  const showNav = Boolean(user) && pathname !== '/auth'
 
   return (
-    <div className="app">
-      <nav className="nav">
-        <NavLink to="/" className="nav__brand">
-          🌱 TouchGrass
-        </NavLink>
-        <div className="nav__links">
-          <NavLink to="/">Groups</NavLink>
-          <NavLink to="/mural">Mural</NavLink>
-        </div>
-        <span className="nav__user">@{user.username}</span>
-        <button
-          className="button button--link"
-          onClick={() => void newIdentity()}
-          title="Start over as someone else — handy for testing a second player"
-        >
-          new identity
-        </button>
-      </nav>
-
+    <>
       <Routes>
-        <Route path="/" element={<GroupsPage />} />
-        <Route path="/groups/:groupId" element={<GroupPage />} />
+        <Route
+          path="/"
+          element={loading ? <Warmup /> : <Navigate to={user ? '/dashboard' : '/auth'} replace />}
+        />
+        <Route path="/auth" element={user ? <Navigate to="/dashboard" replace /> : <AuthPage />} />
+
+        <Route
+          path="/dashboard"
+          element={
+            <RequireSession>
+              <DashboardPage />
+            </RequireSession>
+          }
+        />
+        <Route
+          path="/capture"
+          element={
+            <RequireSession>
+              <CapturePage />
+            </RequireSession>
+          }
+        />
+        <Route
+          path="/review"
+          element={
+            <RequireSession>
+              <ReviewPage />
+            </RequireSession>
+          }
+        />
+        <Route
+          path="/leaderboard"
+          element={
+            <RequireSession>
+              <LeaderboardPage />
+            </RequireSession>
+          }
+        />
+        <Route
+          path="/groups"
+          element={
+            <RequireSession>
+              <GroupsPage />
+            </RequireSession>
+          }
+        />
+        <Route
+          path="/groups/:groupId"
+          element={
+            <RequireSession>
+              <GroupPage />
+            </RequireSession>
+          }
+        />
+
+        {/* Public — the map and mural read across every group, no auth needed. */}
+        <Route path="/map" element={<MapPage />} />
         <Route path="/mural" element={<MuralPage />} />
+
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-    </div>
+
+      {showNav && <BottomNav />}
+    </>
   )
 }

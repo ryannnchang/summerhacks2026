@@ -85,6 +85,23 @@ export interface Mural {
   tiles: MuralTile[]
 }
 
+export interface MapPatch {
+  submission_id: number
+  latitude: number
+  longitude: number
+  thumbnail_url: string
+  username: string
+  total_score: number
+  quality_score: number
+  submitted_at: string
+}
+
+export interface MapData {
+  center: [number, number]
+  patch_count: number
+  patches: MapPatch[]
+}
+
 export type GroupEvent =
   | { type: 'connected'; group_id: number }
   | { type: 'drop.started'; drop_id: number; expires_at: string; triggered_by?: string }
