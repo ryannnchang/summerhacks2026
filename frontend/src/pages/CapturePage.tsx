@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { api } from '../api/client'
 import { CameraCapture } from '../components/CameraCapture'
 import { formatDuration, useCountdown } from '../hooks/useCountdown'
+import { currentCoords } from '../lib/geo'
 import { setPendingPhoto } from '../lib/pendingPhoto'
 import type { Drop } from '../types'
 
@@ -15,6 +16,10 @@ export function CapturePage() {
   const [error, setError] = useState<string | null>(null)
   // A snapped-but-not-yet-submitted photo; the confirm screen shows while set.
   const [shot, setShot] = useState<{ file: File; previewUrl: string } | null>(null)
+
+  // Ask for location the moment the camera opens — both permission prompts
+  // appear together, and the fix is usually resolved before the photo is taken.
+  const coords = useMemo(() => currentCoords(), [])
 
   const remaining = useCountdown(drop?.status === 'active' ? drop.expires_at : null)
 
@@ -38,7 +43,7 @@ export function CapturePage() {
   function handleSubmit() {
     if (!drop || !shot) return
     // The preview URL's lifetime transfers to pendingPhoto, which revokes it.
-    setPendingPhoto({ file: shot.file, previewUrl: shot.previewUrl, dropId: drop.id })
+    setPendingPhoto({ file: shot.file, previewUrl: shot.previewUrl, dropId: drop.id, coords })
     navigate('/review')
   }
 

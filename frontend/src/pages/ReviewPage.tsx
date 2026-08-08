@@ -3,7 +3,6 @@ import { Navigate, useNavigate } from 'react-router-dom'
 
 import { api } from '../api/client'
 import { ResultCard } from '../components/ResultCard'
-import { currentCoords } from '../lib/geo'
 import { getPendingPhoto, uploadPendingOnce } from '../lib/pendingPhoto'
 import type { Submission } from '../types'
 
@@ -21,8 +20,9 @@ export function ReviewPage() {
     // StrictMode's double mount just subscribes twice — whichever mount is
     // still alive when it settles renders the verdict.
     let cancelled = false
+    // The location fix started back when the camera opened; usually resolved.
     uploadPendingOnce(async () =>
-      api.submitGrass(pending.dropId, pending.file, await currentCoords()),
+      api.submitGrass(pending.dropId, pending.file, await pending.coords),
     )
       .then((submission) => {
         if (!cancelled) setResult(submission)

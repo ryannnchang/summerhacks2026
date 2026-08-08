@@ -1,41 +1,29 @@
 import { useState } from 'react'
 
 import { api } from '../api/client'
-import type { Group } from '../types'
 
 const INPUT =
   'w-full bg-turf-900 border border-chalk/20 rounded-lg px-3 py-2.5 text-chalk text-sm placeholder:text-chalk/30 focus:outline-none focus:ring-2 focus:ring-scoreboard'
 
 /**
- * Group create/join, inline on the Friends tab.
+ * Add-friend card, inline on the Friends tab.
  *
- * Groups no longer gate play — drops are global. All a group does now is decide
- * who shows up when the leaderboard is filtered to Friends.
+ * Friendship is email-only in the UI now; groups still exist behind the API
+ * (adding a friend shares a group under the hood) but codes are no longer
+ * exposed. Friends never gate play — drops are global.
  */
-export function JoinGroupCard({ onJoined }: { onJoined: (group: Group) => void }) {
-  const [name, setName] = useState('')
-  const [code, setCode] = useState('')
+export function JoinGroupCard({ onJoined }: { onJoined: () => void }) {
+  const [email, setEmail] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  async function run(action: () => Promise<Group>) {
-    setBusy(true)
-    setError(null)
-    try {
-      onJoined(await action())
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'That did not work')
-    } finally {
-      setBusy(false)
-    }
-  }
+  const [added, setAdded] = useState<string | null>(null)
 
   return (
     <div className="bg-turf-800/60 chalk-border rounded-2xl p-5 flex flex-col gap-5">
       <div>
         <p className="font-display text-2xl tracking-wide text-chalk leading-none">ADD FRIENDS</p>
         <p className="text-chalk/60 text-sm mt-1">
-          Share a group and you'll see each other here. You're already scoring either way.
+          Add someone by the email they sign in with and you'll see each other here.
         </p>
       </div>
 
@@ -43,17 +31,32 @@ export function JoinGroupCard({ onJoined }: { onJoined: (group: Group) => void }
         className="flex flex-col gap-2"
         onSubmit={(e) => {
           e.preventDefault()
-          void run(() => api.createGroup(name.trim()))
+          void (async () => {
+            setBusy(true)
+            setError(null)
+            setAdded(null)
+            try {
+              const friend = await api.addFriend(email.trim())
+              setAdded(friend.display_name || friend.username)
+              setEmail('')
+              onJoined()
+            } catch (err) {
+              setError(err instanceof Error ? err.message : 'That did not work')
+            } finally {
+              setBusy(false)
+            }
+          })()
         }}
       >
-        <label htmlFor="new-group" className="font-mono text-[10px] text-chalk/50 tracking-widest">
-          START A GROUP
+        <label htmlFor="friend-email" className="font-mono text-[10px] text-chalk/50 tracking-widest">
+          THEIR EMAIL
         </label>
         <input
-          id="new-group"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Basement Dwellers Anonymous"
+          id="friend-email"
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="them@gmail.com"
           required
           className={INPUT}
         />
@@ -61,37 +64,15 @@ export function JoinGroupCard({ onJoined }: { onJoined: (group: Group) => void }
           disabled={busy}
           className="w-full bg-scoreboard hover:bg-scoreboard-dim disabled:bg-scoreboard/30 text-turf-900 font-display text-lg tracking-wide py-2 rounded-xl transition-colors"
         >
-          CREATE
+          {busy ? 'ADDING…' : 'ADD FRIEND'}
         </button>
       </form>
 
-      <form
-        className="flex flex-col gap-2"
-        onSubmit={(e) => {
-          e.preventDefault()
-          void run(() => api.joinGroup(code.trim()))
-        }}
-      >
-        <label htmlFor="join-code" className="font-mono text-[10px] text-chalk/50 tracking-widest">
-          JOIN WITH A CODE
-        </label>
-        <input
-          id="join-code"
-          value={code}
-          onChange={(e) => setCode(e.target.value.toUpperCase())}
-          placeholder="A1B2C3"
-          maxLength={8}
-          required
-          className={`${INPUT} uppercase font-mono tracking-widest`}
-        />
-        <button
-          disabled={busy}
-          className="w-full border border-chalk/20 text-chalk/80 hover:text-chalk hover:border-chalk/40 disabled:opacity-50 font-display text-lg tracking-wide py-2 rounded-xl transition-colors"
-        >
-          JOIN
-        </button>
-      </form>
-
+      {added && (
+        <p className="text-turf-400 text-sm" role="status">
+          {added} is now on your friends board.
+        </p>
+      )}
       {error && (
         <p className="text-dirt-light text-sm" role="alert">
           {error}

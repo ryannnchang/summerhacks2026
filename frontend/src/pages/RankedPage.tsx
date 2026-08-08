@@ -155,7 +155,7 @@ export function RankedPage() {
           <LeaderboardList
             rows={friends}
             currentUsername={user?.username}
-            emptyMessage="Just you so far. Share a group code and your friends show up here."
+            emptyMessage="Just you so far. Add a friend by email and they show up here."
           />
           {/* The only place groups are managed now, and it never blocks play. */}
           <JoinGroupCard onJoined={() => void refresh()} />

@@ -69,14 +69,17 @@ export const api = {
   lookupUser: (username: string) =>
     request<User>(`/users/by-username/${encodeURIComponent(username)}`),
   /** Finds or creates the backend account behind a Google identity. Idempotent. */
-  linkUser: (supabaseUid: string, username: string, displayName: string) =>
+  linkUser: (supabaseUid: string, username: string, displayName: string, email: string | null) =>
     request<User>('/users/link', {
       method: 'POST',
-      body: json({ supabase_uid: supabaseUid, username, display_name: displayName }),
+      body: json({ supabase_uid: supabaseUid, username, display_name: displayName, email }),
     }),
   me: () => request<User>('/users/me'),
   updateMe: (fields: { username?: string; display_name?: string }) =>
     request<User>('/users/me', { method: 'PATCH', body: json(fields) }),
+  /** Befriend by Google email — puts you both in a shared group. Idempotent. */
+  addFriend: (email: string) =>
+    request<User>('/users/friends', { method: 'POST', body: json({ email }) }),
 
   // groups
   listGroups: () => request<Group[]>('/groups'),

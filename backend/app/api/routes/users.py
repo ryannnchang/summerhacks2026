@@ -2,8 +2,8 @@ from fastapi import APIRouter, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 
 from app.api.deps import CurrentUser, DbSession
-from app.models import Player, User
-from app.schemas import UserCreate, UserLink, UserOut, UserUpdate
+from app.models import Group, Membership, Player, User
+from app.schemas import FriendAdd, UserCreate, UserLink, UserOut, UserUpdate
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -54,6 +54,8 @@ def link_supabase_user(payload: UserLink, db: DbSession) -> User:
 
     if payload.display_name:
         user.display_name = payload.display_name
+    if payload.email:
+        user.email = payload.email.strip().lower()
 
     player = db.get(Player, payload.supabase_uid)
     if player is None:
@@ -101,6 +103,49 @@ def update_me(payload: UserUpdate, user: CurrentUser, db: DbSession) -> UserOut:
     db.commit()
     db.refresh(user)
     return _with_elo(db, user)
+
+
+@router.post("/friends", response_model=UserOut, status_code=status.HTTP_201_CREATED)
+def add_friend(payload: FriendAdd, user: CurrentUser, db: DbSession) -> UserOut:
+    """Befriends another player by their Google email.
+
+    "Friends" means sharing a group, so this drops them into a group the caller
+    owns — created on the spot if they own none. Idempotent: already-friends is
+    a success, not an error.
+    """
+    from app.api.routes.groups import _make_join_code  # avoid a circular import
+
+    email = payload.email.strip().lower()
+    friend = db.query(User).filter(User.email == email).first()
+    if friend is None:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            "No player with that email yet — they need to sign in once first.",
+        )
+    if friend.id == user.id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "That's your own email.")
+
+    group = db.query(Group).filter(Group.owner_id == user.id).first()
+    if group is None:
+        group = Group(
+            name=f"{user.display_name or user.username}'s crew",
+            join_code=_make_join_code(db),
+            owner_id=user.id,
+        )
+        db.add(group)
+        db.flush()
+        db.add(Membership(user_id=user.id, group_id=group.id))
+
+    already = (
+        db.query(Membership)
+        .filter(Membership.group_id == group.id, Membership.user_id == friend.id)
+        .first()
+    )
+    if already is None:
+        db.add(Membership(user_id=friend.id, group_id=group.id))
+    db.commit()
+
+    return _with_elo(db, friend)
 
 
 @router.get("/by-username/{username}", response_model=UserOut)

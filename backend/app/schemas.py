@@ -19,6 +19,11 @@ class UserLink(BaseModel):
     supabase_uid: str = Field(min_length=8, max_length=36)
     username: str = Field(min_length=2, max_length=32, pattern=r"^[a-zA-Z0-9_.-]+$")
     display_name: str | None = Field(default=None, max_length=64)
+    email: str | None = Field(default=None, max_length=255)
+
+
+class FriendAdd(BaseModel):
+    email: str = Field(min_length=3, max_length=255)
 
 
 class UserUpdate(BaseModel):

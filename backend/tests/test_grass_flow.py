@@ -76,7 +76,12 @@ def make_user(client, username):
     uid = f"{uuid.uuid5(uuid.NAMESPACE_DNS, username)}"
     r = client.post(
         "/api/users/link",
-        json={"supabase_uid": uid, "username": username, "display_name": username},
+        json={
+            "supabase_uid": uid,
+            "username": username,
+            "display_name": username,
+            "email": f"{username}@test.com",
+        },
     )
     assert r.status_code == 200, r.text
     return r.json()["id"]
@@ -518,3 +523,30 @@ def test_rename_follows_through_to_leaderboard(client):
 
     board = client.get("/api/leaderboard").json()
     assert {e["username"] for e in board} == {"newname", "taken"}
+
+
+def test_add_friend_by_email(client):
+    me = make_user(client, "hermit")
+    make_user(client, "buddy")
+    headers = {"X-User-Id": str(me)}
+
+    # Unknown address is a 404, my own is a 400.
+    assert (
+        client.post("/api/users/friends", headers=headers, json={"email": "ghost@test.com"})
+    ).status_code == 404
+    assert (
+        client.post("/api/users/friends", headers=headers, json={"email": "hermit@test.com"})
+    ).status_code == 400
+
+    # Case-insensitive match; a friends group is created on the spot.
+    r = client.post("/api/users/friends", headers=headers, json={"email": "Buddy@Test.com"})
+    assert r.status_code == 201, r.text
+    assert r.json()["username"] == "buddy"
+
+    board = client.get("/api/leaderboard?scope=friends", headers=headers).json()
+    assert {e["username"] for e in board} == {"hermit", "buddy"}
+
+    # Adding twice is a no-op success, not an error.
+    assert (
+        client.post("/api/users/friends", headers=headers, json={"email": "buddy@test.com"})
+    ).status_code == 201

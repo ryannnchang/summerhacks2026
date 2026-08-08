@@ -13,6 +13,11 @@ export interface PendingPhoto {
   /** Object URL for preview. Revoked when the next photo replaces this one. */
   previewUrl: string
   dropId: number
+  /**
+   * Location fix, started when the camera opened so both permission prompts
+   * appear together. Resolves undefined on refusal/timeout — never blocks.
+   */
+  coords: Promise<{ latitude: number; longitude: number } | undefined>
   /** Set once the upload comes back, so revisiting /review can't re-submit it. */
   result: Submission | null
 }
