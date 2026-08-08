@@ -42,7 +42,7 @@ export function MapPage() {
   }, [])
 
   return (
-    <main className="fixed inset-0 bottom-[49px]">
+    <main className="fixed inset-x-0 top-0 bottom-14">
       <GrassMap
         center={data?.center ?? TORONTO}
         zoom={DEFAULT_ZOOM}

@@ -6,6 +6,9 @@ import { defineConfig } from 'vite'
 // The API and uploaded images are proxied so the app is same-origin in dev.
 export default defineConfig({
   plugins: [react()],
+  // Env lives at the repo root, not in frontend/, so both halves of the project
+  // share one .env. Only VITE_-prefixed vars reach the browser bundle.
+  envDir: '..',
   // PostCSS is configured inline rather than via postcss.config.js so Vite never
   // walks up and finds the unrelated postcss.config.mjs in a parent directory.
   css: { postcss: { plugins: [tailwindcss(), autoprefixer()] } },

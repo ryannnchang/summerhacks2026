@@ -1,44 +1,46 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation } from 'react-router-dom'
 
-import { api } from '../api/client'
 import { useSession } from '../hooks/useSession'
 
+function GoogleMark() {
+  return (
+    <svg viewBox="0 0 48 48" className="w-5 h-5 flex-shrink-0" aria-hidden>
+      <path
+        fill="#4285F4"
+        d="M45.12 24.5c0-1.56-.14-3.06-.4-4.5H24v8.51h11.84c-.51 2.75-2.06 5.08-4.39 6.64v5.52h7.11c4.16-3.83 6.56-9.47 6.56-16.17z"
+      />
+      <path
+        fill="#34A853"
+        d="M24 46c5.94 0 10.92-1.97 14.56-5.33l-7.11-5.52c-1.97 1.32-4.49 2.1-7.45 2.1-5.73 0-10.58-3.87-12.31-9.07H4.34v5.7C7.96 41.07 15.4 46 24 46z"
+      />
+      <path
+        fill="#FBBC05"
+        d="M11.69 28.18C11.25 26.86 11 25.45 11 24s.25-2.86.69-4.18v-5.7H4.34C2.85 17.09 2 20.45 2 24s.85 6.91 2.34 9.88l7.35-5.7z"
+      />
+      <path
+        fill="#EA4335"
+        d="M24 10.75c3.23 0 6.13 1.11 8.41 3.29l6.31-6.31C34.91 4.18 29.93 2 24 2 15.4 2 7.96 6.93 4.34 14.12l7.35 5.7c1.73-5.2 6.58-9.07 12.31-9.07z"
+      />
+    </svg>
+  )
+}
+
 export function AuthPage() {
-  const navigate = useNavigate()
-  const { signIn, selectGroup } = useSession()
-
-  const [username, setUsername] = useState('')
-  const [joinCode, setJoinCode] = useState('')
+  const { signInWithGoogle, error } = useSession()
+  const location = useLocation()
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    const name = username.trim()
-    const code = joinCode.trim().toUpperCase()
+  // Set by RequireSession when it turns someone away from /capture.
+  const state = location.state as { returnTo?: string } | null
+  const returnTo = state?.returnTo
 
-    if (!name) {
-      setError('Pick a username to continue.')
-      return
-    }
-
+  async function handleSignIn() {
     setBusy(true)
-    setError(null)
     try {
-      await signIn(name)
-
-      // A code is optional: without one we drop the visitor on /groups to start
-      // or pick a group, which is where the real API expects them anyway.
-      if (code) {
-        const group = await api.joinGroup(code)
-        selectGroup(group.id)
-        navigate('/dashboard')
-      } else {
-        navigate('/groups')
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not sign you in')
+      // On success the browser leaves for Google, so `busy` stays true until
+      // it comes back. Only a failed handoff falls through to the reset below.
+      await signInWithGoogle(returnTo)
     } finally {
       setBusy(false)
     }
@@ -50,47 +52,22 @@ export function AuthPage() {
         <div className="mb-8 text-center">
           <p className="font-mono text-scoreboard text-xs tracking-[0.3em] mb-1">SEASON 01</p>
           <h1 className="font-display text-5xl sm:text-6xl tracking-wide text-chalk leading-none">
-            COMPETITIVE
+            RANKED
             <br />
             GRASS
           </h1>
           <p className="text-chalk/60 text-sm mt-3">Go outside. Get verified. Beat your group.</p>
         </div>
 
-        <form
-          onSubmit={handleSubmit}
-          className="w-full flex flex-col gap-4 bg-turf-800/60 chalk-border rounded-2xl p-5"
-        >
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="username" className="font-mono text-xs text-chalk/60 tracking-wide">
-              USERNAME
-            </label>
-            <input
-              id="username"
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="e.g. priya"
-              autoCapitalize="none"
-              autoCorrect="off"
-              className="bg-turf-900 border border-chalk/20 rounded-lg px-3 py-2.5 text-chalk placeholder:text-chalk/30 focus:outline-none focus:ring-2 focus:ring-scoreboard"
-            />
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="code" className="font-mono text-xs text-chalk/60 tracking-wide">
-              GROUP CODE <span className="text-chalk/30">(optional)</span>
-            </label>
-            <input
-              id="code"
-              type="text"
-              value={joinCode}
-              onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
-              placeholder="e.g. A1B2C3"
-              maxLength={8}
-              className="bg-turf-900 border border-chalk/20 rounded-lg px-3 py-2.5 text-chalk placeholder:text-chalk/30 uppercase focus:outline-none focus:ring-2 focus:ring-scoreboard"
-            />
-          </div>
+        <div className="w-full flex flex-col gap-4 bg-turf-800/60 chalk-border rounded-2xl p-5">
+          <button
+            onClick={() => void handleSignIn()}
+            disabled={busy}
+            className="w-full bg-chalk hover:bg-white disabled:opacity-60 text-turf-900 font-semibold py-3 rounded-xl transition-colors flex items-center justify-center gap-3"
+          >
+            <GoogleMark />
+            {busy ? 'Redirecting…' : 'Continue with Google'}
+          </button>
 
           {error && (
             <p className="text-dirt-light text-sm" role="alert">
@@ -98,18 +75,11 @@ export function AuthPage() {
             </p>
           )}
 
-          <button
-            type="submit"
-            disabled={busy}
-            className="w-full bg-scoreboard hover:bg-scoreboard-dim disabled:bg-scoreboard/30 text-turf-900 font-display text-xl tracking-wide py-3 rounded-xl transition-colors mt-1"
-          >
-            {busy ? 'CHECKING IN…' : 'JOIN THE GROUP'}
-          </button>
-
-          <p className="text-chalk/40 text-xs text-center">
-            No password. Existing username? You'll walk back into that account.
+          <p className="text-chalk/40 text-xs text-center leading-relaxed">
+            We use your Google name and email to build your player profile. Nothing is posted
+            anywhere.
           </p>
-        </form>
+        </div>
       </div>
     </main>
   )

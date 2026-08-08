@@ -116,7 +116,7 @@ export const api = {
   mySubmissions: () => request<Submission[]>('/users/me/submissions'),
 
   // mural
-  mural: () => request<Mural>('/mural'),
+  mural: (limit?: number) => request<Mural>(`/mural${limit ? `?limit=${limit}` : ''}`),
 
   // map (public — works without auth)
   mapPatches: (sinceHours?: number) =>

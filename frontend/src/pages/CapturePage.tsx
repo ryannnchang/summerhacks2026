@@ -38,7 +38,7 @@ export function CapturePage() {
     navigate('/review')
   }
 
-  if (groupId === null) return <Navigate to="/groups" replace />
+  if (groupId === null) return <Navigate to="/" replace />
 
   const open = drop?.status === 'active' && !drop.has_submitted
 
@@ -46,7 +46,7 @@ export function CapturePage() {
     <main className="min-h-screen flex flex-col px-5 pt-8 pb-24">
       <div className="flex items-center justify-between mb-5">
         <button
-          onClick={() => navigate('/dashboard')}
+          onClick={() => navigate('/')}
           className="text-chalk/60 hover:text-chalk text-sm font-mono w-12 text-left"
         >
           ← BACK
@@ -83,13 +83,13 @@ export function CapturePage() {
               <p className="text-chalk/60 text-sm max-w-xs">
                 {drop?.has_submitted
                   ? 'You logged this one. Sit tight for the next drop.'
-                  : 'Photos only count during a live drop. Start one from the dashboard.'}
+                  : 'Photos only count during a live drop. Start one from the rankings page.'}
               </p>
               <button
-                onClick={() => navigate('/dashboard')}
+                onClick={() => navigate('/')}
                 className="bg-scoreboard hover:bg-scoreboard-dim text-turf-900 font-display text-xl tracking-wide px-6 py-2.5 rounded-xl transition-colors"
               >
-                BACK TO DASHBOARD
+                BACK TO RANKINGS
               </button>
             </>
           )}

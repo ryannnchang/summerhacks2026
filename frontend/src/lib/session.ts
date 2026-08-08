@@ -31,3 +31,22 @@ export function clearSession(): void {
   setUserId(null)
   setActiveGroupId(null)
 }
+
+/**
+ * Where to land after signing in.
+ *
+ * Google OAuth is a full page navigation away and back, so router state doesn't
+ * survive it. sessionStorage does.
+ */
+const RETURN_TO_KEY = 'cg_return_to'
+
+export function setReturnTo(path: string): void {
+  window.sessionStorage.setItem(RETURN_TO_KEY, path)
+}
+
+export function takeReturnTo(): string | null {
+  const path = window.sessionStorage.getItem(RETURN_TO_KEY)
+  window.sessionStorage.removeItem(RETURN_TO_KEY)
+  // Only same-app paths, never an absolute URL someone stuffed in there.
+  return path && path.startsWith('/') && !path.startsWith('//') ? path : null
+}

@@ -65,14 +65,14 @@ export function ResultCard({ submission, previewUrl }: Props) {
           </button>
         )}
         <button
-          onClick={() => navigate('/dashboard')}
+          onClick={() => navigate('/')}
           className={`w-full font-display text-xl tracking-wide py-3 rounded-xl transition-colors ${
             verified
               ? 'bg-scoreboard hover:bg-scoreboard-dim text-turf-900'
               : 'border border-chalk/20 text-chalk/70 hover:text-chalk'
           }`}
         >
-          BACK TO DASHBOARD
+          BACK TO RANKINGS
         </button>
       </div>
     </div>
