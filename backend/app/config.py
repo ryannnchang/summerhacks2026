@@ -40,7 +40,9 @@ class Settings(BaseSettings):
     # Gemini vision judging. With a key set, Gemini is the judge and the CV
     # heuristic becomes the fallback; without one, the heuristic judges alone.
     gemini_api_key: str | None = None
-    gemini_model: str = "gemini-2.5-flash"
+    # "-latest" alias tracks the current flash model; pinned names age out for
+    # new API keys (gemini-2.5-flash already 404s on keys minted today).
+    gemini_model: str = "gemini-flash-latest"
     gemini_timeout_seconds: float = 25.0
 
     # Mural
