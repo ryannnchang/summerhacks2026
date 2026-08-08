@@ -7,6 +7,8 @@ import { ScoreboardTimer } from './ScoreboardTimer'
 interface Props {
   drop: Drop | null
   onTrigger?: () => void
+  /** Closes the live drop and fires a fresh one — resets everyone's timer. Demo tool. */
+  onReset?: () => void
   triggering?: boolean
   /** Signed-out view: show the clock, but no camera link and no trigger. */
   readOnly?: boolean
@@ -16,9 +18,22 @@ interface Props {
  * The live/not-live band under the title. The drop is global, so this is the same
  * clock for everyone — and when it's open, the only route into the camera.
  */
-export function DropStatus({ drop, onTrigger, triggering, readOnly }: Props) {
+export function DropStatus({ drop, onTrigger, onReset, triggering, readOnly }: Props) {
   const remaining = useCountdown(drop?.status === 'active' ? drop.expires_at : null)
   const live = drop?.status === 'active'
+
+  // Sits under the live card. Closing + refiring the drop resets the clock and
+  // lets everyone submit again — the demo escape hatch.
+  const resetRow =
+    !readOnly && onReset && live ? (
+      <button
+        onClick={onReset}
+        disabled={triggering}
+        className="w-full mt-2 text-chalk/40 hover:text-chalk/80 disabled:opacity-50 font-mono text-[10px] tracking-widest py-1.5 transition-colors"
+      >
+        {triggering ? 'RESETTING…' : '↻ RESET DROP (demo)'}
+      </button>
+    ) : null
 
   if (live && drop && !drop.has_submitted) {
     const body = (
@@ -45,24 +60,32 @@ export function DropStatus({ drop, onTrigger, triggering, readOnly }: Props) {
     )
 
     const skin = 'block w-full text-left bg-scoreboard text-turf-900 rounded-2xl chalk-border-solid p-5 shadow-lg'
-    return readOnly ? (
-      <div className={skin}>{body}</div>
-    ) : (
-      <Link to="/capture" className={`${skin} active:scale-[0.98] transition-transform`}>
-        {body}
-      </Link>
+    return (
+      <div>
+        {readOnly ? (
+          <div className={skin}>{body}</div>
+        ) : (
+          <Link to="/capture" className={`${skin} active:scale-[0.98] transition-transform`}>
+            {body}
+          </Link>
+        )}
+        {resetRow}
+      </div>
     )
   }
 
   if (live && drop?.has_submitted) {
     return (
-      <div className="bg-turf-800/70 chalk-border rounded-2xl p-5">
-        <p className="font-display text-2xl tracking-wide text-turf-400 leading-none mb-1">
-          YOU'RE IN THIS DROP
-        </p>
-        <p className="text-chalk/60 text-sm">
-          Submitted. The window closes in {remaining === null ? '—' : formatShort(remaining)}.
-        </p>
+      <div>
+        <div className="bg-turf-800/70 chalk-border rounded-2xl p-5">
+          <p className="font-display text-2xl tracking-wide text-turf-400 leading-none mb-1">
+            YOU'RE IN THIS DROP
+          </p>
+          <p className="text-chalk/60 text-sm">
+            Submitted. The window closes in {remaining === null ? '—' : formatShort(remaining)}.
+          </p>
+        </div>
+        {resetRow}
       </div>
     )
   }

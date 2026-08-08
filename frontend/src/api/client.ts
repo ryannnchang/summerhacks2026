@@ -100,6 +100,7 @@ export const api = {
   currentDrop: () => request<Drop>('/drops/current'),
   listDrops: () => request<Drop[]>('/drops'),
   triggerDrop: () => request<Drop>('/drops/trigger', { method: 'POST' }),
+  resetDrop: () => request<Drop>('/drops/reset', { method: 'POST' }),
 
   // submissions
   submitGrass: (dropId: number, photo: File, coords?: { latitude: number; longitude: number }) => {
