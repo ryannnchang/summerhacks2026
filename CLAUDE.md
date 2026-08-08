@@ -4,11 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-**Touch Grass** — a group accountability game. At a random moment a **drop** fires for a group,
-members get 15 minutes to photograph real grass, the photo is CV-verified and scored on
-quality × speed, and verified photos tile a shared global mural.
+**Touch Grass** (browser title: "Competitive Grass") — a group accountability game. At a random
+moment a **drop** fires for a group, members get 15 minutes to photograph real grass, the photo is
+CV-verified and scored on quality × speed, and verified photos land on both a shared global mural
+and a public Leaflet map.
 
-Two processes: FastAPI + SQLite on `:8000`, React + Vite on `:5173`.
+Two processes: FastAPI + SQLite on `:8000`, React + TypeScript + Vite on `:5173`.
 
 ## Commands
 
@@ -39,13 +40,13 @@ There is no linter or formatter configured.
 
 `tests/test_grass_flow.py` imports the real `engine` from `app.database` and calls
 `Base.metadata.drop_all()` in an autouse fixture. **Running the tests wipes the dev database**
-(`backend/grass.db`) unless `DATABASE_URL` points elsewhere. Tests also go through `TestClient(app)`,
+(`backend/grass.db`) unless `DATABASE_URL` points elsewhere. Tests go through `TestClient(app)`,
 which triggers the lifespan and starts a real scheduler task.
 
 Test images are generated in-process: `fake_grass()` (noisy green, passes), `flat_green()` (fails
 texture), `not_grass()` (fails coverage). Tuning verifier thresholds will break these.
 
-## Architecture
+## Backend architecture
 
 ### The drop lifecycle
 
@@ -56,8 +57,8 @@ lifespan runs [drop_scheduler.py](backend/app/services/drop_scheduler.py) every 
 2. Flips expired `ACTIVE` → `CLOSED`, broadcasts `drop.closed`, queues the next pending drop
 3. Backfills a pending drop for any group missing one
 
-`ensure_pending_drop()` is also called from route handlers (group creation, `GET /drops/current`),
-so the invariant holds even between ticks.
+`ensure_pending_drop()` is also called from route handlers (group creation, `GET /drops/current`,
+`POST /drops/trigger`), so the invariant holds even between ticks.
 
 ### Single-process constraints
 
@@ -88,40 +89,103 @@ multiplier caps at +50%.
 ### Data model
 
 ```
-User ──< Membership >── Group ──< Drop ──< Submission ── mural_x, mural_y
+User ──< Membership >── Group ──< Drop ──< Submission ── mural_x/mural_y, latitude/longitude
 ```
 
 `Membership` is both the join table and the per-group scoreboard (`total_score`, `streak`), so
 standings are independent per group. Two unique constraints carry most of the correctness:
 `(user_id, group_id)` blocks double-joins, `(user_id, drop_id)` blocks double-submissions.
 
-The mural is **global** — [mural.py](backend/app/services/mural.py) counts all placed tiles across
-every group and assigns the next cell in a fixed-width grid.
+There is **no migration tooling** — `init_db()` only runs `create_all()`. Adding a column means
+deleting `backend/grass.db` or migrating by hand.
+
+### Mural vs. map
+
+Two different global views of the same submissions, both public (no auth):
+
+- **Mural** ([mural.py](backend/app/services/mural.py)) — counts all placed tiles across every group
+  and assigns the next cell in a fixed-width grid. Every verified submission gets a tile.
+- **Map** ([routes/map.py](backend/app/api/routes/map.py)) — only verified submissions that arrived
+  with coordinates. Lat/lng are optional `Form` fields on the upload; the browser may refuse to
+  share location, in which case the submission still scores and still tiles the mural but never
+  appears on the map. `GET /api/map/patches` returns the configured center alongside the patches.
 
 ### Auth
 
-There is none. [deps.py](backend/app/api/deps.py) `current_user()` trusts an `X-User-Id` header;
-the frontend auto-creates a `guest-xxxx` user on first load and stores the id in `localStorage`.
+There is none. [deps.py](backend/app/api/deps.py) `current_user()` trusts an `X-User-Id` header.
 Every protected route depends on `CurrentUser`, so replacing this is one function. The WebSocket
 route is entirely unauthenticated.
 
-### Frontend
+## Frontend architecture
 
 Same-origin in dev — [vite.config.ts](frontend/vite.config.ts) proxies `/api` (with `ws: true`) and
 `/uploads` to `:8000`, so the browser only ever talks to `:5173`.
 
-[client.ts](frontend/src/api/client.ts) is the single fetch wrapper: it injects `X-User-Id`, skips
-`Content-Type` for `FormData`, and unwraps FastAPI's `detail` field into an `ApiError`. Add new
-endpoints as methods on the `api` object rather than calling `fetch` from components.
+### Styling
+
+**Tailwind**, configured with a custom sports-field palette in
+[tailwind.config.js](frontend/tailwind.config.js): `turf-900..400`, `chalk`, `scoreboard`,
+`dirt`. Fonts are Bebas Neue / Work Sans / Space Mono, loaded via `<link>` in `index.html` and
+wired through CSS variables. Use `font-display` / `font-body` / `font-mono` rather than raw
+family names.
+
+PostCSS is configured **inline in `vite.config.ts`**, not via a `postcss.config.js` — deliberately,
+so Vite doesn't walk up and find an unrelated config in a parent directory. Adding a
+`postcss.config.js` will not take effect.
+
+[styles/index.css](frontend/src/styles/index.css) holds the Tailwind directives plus a few custom
+utilities that don't express well as classes (`chalk-border`, `flip-digit`, `grass-pin`).
+
+### Routing and session
+
+[App.tsx](frontend/src/App.tsx) is the router. Most routes are wrapped in `RequireSession` and
+bounce to `/auth`; `/map` and `/mural` are deliberately public. `BottomNav` renders only when
+signed in.
+
+[useSession.tsx](frontend/src/hooks/useSession.tsx) is the session context — `signIn` is
+sign-in and sign-up in one gesture (look the username up, create it if 404). It also holds
+`groupId`, the group the bottom-nav tabs are currently pointed at; pages read it rather than taking
+a route param. Raw localStorage access lives in [lib/session.ts](frontend/src/lib/session.ts)
+(`cg_user_id`, `cg_group_id`), not in the API client.
+
+### Capture → review handoff
+
+`/capture` and `/review` are two routes over one upload. [CameraCapture](frontend/src/components/CameraCapture.tsx)
+produces a `File` (getUserMedia + canvas, with a file-input fallback), `/capture` stashes it in
+[lib/pendingPhoto.ts](frontend/src/lib/pendingPhoto.ts) — **module-level memory, not localStorage**,
+because a camera frame blows the ~5MB quota — and navigates to `/review`, which uploads it and
+shows the verdict. A hard refresh on `/review` therefore has nothing to submit and redirects back.
+
+`currentCoords()` in [lib/geo.ts](frontend/src/lib/geo.ts) is best-effort and resolves `undefined`
+on refusal or timeout; it must never block the upload.
+
+### API client
+
+[client.ts](frontend/src/api/client.ts) is the single fetch wrapper: `authHeader()` injects
+`X-User-Id`, `Content-Type` is skipped for `FormData`, and FastAPI's `detail` field is unwrapped
+into an `ApiError` carrying `status`. Add new endpoints as methods on the `api` object rather than
+calling `fetch` from components.
+
+### Map component
+
+[GrassMap.tsx](frontend/src/components/GrassMap.tsx) wraps Leaflet imperatively (refs + effects, no
+React binding library). Pins are `divIcon`s on purpose — Leaflet's default marker resolves
+`marker-icon.png` to a 404 under bundlers and renders invisible. Popup content is built as an HTML
+string, so anything user-supplied goes through the local `escapeAttr()`.
 
 ## Configuration
 
 All tunables are in [backend/app/config.py](backend/app/config.py), overridable via `backend/.env`
 (copy `.env.example`). For demos, tighten `DROP_MIN_GAP_SECONDS` / `DROP_MAX_GAP_SECONDS` — or use
-the **Drop now** button, which hits `POST /groups/{id}/drops/trigger`.
+the trigger button, which hits `POST /groups/{id}/drops/trigger`. Map default center is downtown
+Toronto (`MAP_CENTER_LAT` / `MAP_CENTER_LNG` / `MAP_ZOOM`).
 
 ## Reference
 
 [docs/architecture.md](docs/architecture.md) covers design rationale, the path off single-process,
 and an anti-cheat backlog. [docs/api.md](docs/api.md) is the endpoint reference; Swagger is at
 `http://127.0.0.1:8000/docs`.
+
+Note that [README.md](README.md) is currently out of date on the frontend: it lists pre-redesign
+component and page names (`DropBanner`, `GrassCapture`, `Leaderboard`, `useAuth`) and claims the
+frontend sends no identity, which is no longer true. Trust this file and the source over it.
