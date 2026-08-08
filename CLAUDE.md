@@ -74,10 +74,25 @@ must go through `as_utc()` (exported from `drop_scheduler.py`) before arithmetic
 
 ### Verification and scoring
 
-[grass_verifier.py](backend/app/services/grass_verifier.py) is a pure-CV heuristic — HSV green mask
-→ coverage, edge energy inside the mask → texture, mean saturation → vibrance. No model, runs in
-milliseconds. `verify_grass()` returning a `GrassResult` is the contract; a real vision model can
-replace the function body without touching the route.
+Two judges share one contract — `verify_grass()` in
+[grass_verifier.py](backend/app/services/grass_verifier.py) returns a `GrassResult`, and the route
+only knows that shape:
+
+- **Gemini** ([gemini_judge.py](backend/app/services/gemini_judge.py)) judges when
+  `GEMINI_API_KEY` is set: one `google-genai` call with a pydantic `response_schema` (strict JSON)
+  doing the authenticity gate (screens/prints/turf), grass classification, lushness + biodiversity
+  scoring (weeds and flowers beat mowed lawn), and palette/feature extraction for the glyphs.
+  Quality becomes `0.45·lushness + 0.35·biodiversity + 0.20·coverage` (`merge_gemini`).
+- **CV heuristic** (same file) — HSV green mask → coverage, edge energy → texture, saturation →
+  vibrance. Judges alone without a key, and catches every Gemini failure (timeout, outage, bad
+  JSON) so a dead API degrades the judging, not the demo.
+
+The local pixel signals are computed on every submission regardless of judge, so
+`grass_coverage`/`texture_score`/`dominant_color` stay meaningful. Gemini extras persist on
+`Submission` (`lushness`, `biodiversity`, `features_json`, `verdict_source`). `verify_grass()` is
+blocking — the route calls it via `run_in_threadpool` to keep the scheduler and WebSockets alive.
+Tests force the heuristic (`force_heuristic_judge` fixture), so they stay offline even with a key
+in `.env`.
 
 [scoring.py](backend/app/services/scoring.py) holds all the weights and has no callers depending on
 the numbers. `Submission` persists the raw verifier signals alongside derived scores, so re-tuning
@@ -96,7 +111,10 @@ User ──< Membership >── Group ──< Drop ──< Submission ── mur
 standings are independent per group. Two unique constraints carry most of the correctness:
 `(user_id, group_id)` blocks double-joins, `(user_id, drop_id)` blocks double-submissions.
 
-There is **no migration tooling** — `init_db()` only runs `create_all()`. Adding a column means
+There is no Alembic, but `init_db()` runs a poor-man's migration
+(`_backfill_sqlite_columns` in [database.py](backend/app/database.py)) that `ALTER TABLE ADD
+COLUMN`s any **nullable** model column missing from an existing SQLite db. Additive nullable
+columns are therefore safe; anything else (renames, non-nullable, type changes) still means
 deleting `backend/grass.db` or migrating by hand.
 
 ### Mural vs. map

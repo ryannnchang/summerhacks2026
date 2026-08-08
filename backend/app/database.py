@@ -24,7 +24,32 @@ def get_db() -> Iterator[Session]:
         db.close()
 
 
+def _backfill_sqlite_columns() -> None:
+    """Poor-man's migration: ADD COLUMN for model columns missing from the db.
+
+    `create_all()` only creates missing *tables* — it never alters existing ones,
+    and there is no Alembic here. Nullable columns can always be added safely, so
+    this keeps an existing grass.db working across additive schema changes.
+    """
+    if not settings.database_url.startswith("sqlite"):
+        return
+    with engine.begin() as conn:
+        for table in Base.metadata.sorted_tables:
+            info = conn.exec_driver_sql(f"PRAGMA table_info('{table.name}')").fetchall()
+            if not info:
+                continue  # create_all is about to build it whole
+            existing = {row[1] for row in info}
+            for column in table.columns:
+                if column.name in existing or not column.nullable:
+                    continue
+                col_type = column.type.compile(engine.dialect)
+                conn.exec_driver_sql(
+                    f"ALTER TABLE {table.name} ADD COLUMN {column.name} {col_type}"
+                )
+
+
 def init_db() -> None:
     from app import models  # noqa: F401  (register tables)
 
+    _backfill_sqlite_columns()
     Base.metadata.create_all(bind=engine)

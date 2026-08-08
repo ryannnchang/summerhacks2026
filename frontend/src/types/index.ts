@@ -55,6 +55,12 @@ export interface Submission {
   image_url: string
   thumbnail_url: string
   username: string | null
+  /** Gemini judge extras — null when the CV heuristic judged. */
+  lushness: number | null
+  biodiversity: number | null
+  palette: string[] | null
+  features: string[] | null
+  verdict_source: 'gemini' | 'heuristic' | null
 }
 
 export interface LeaderboardEntry {

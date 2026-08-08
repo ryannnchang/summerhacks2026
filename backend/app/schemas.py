@@ -80,6 +80,13 @@ class SubmissionOut(ORMModel):
     thumbnail_url: str
     username: str | None = None
 
+    # Gemini judge extras; null when the CV heuristic judged.
+    lushness: float | None = None
+    biodiversity: float | None = None
+    palette: list[str] | None = None
+    features: list[str] | None = None
+    verdict_source: str | None = None
+
 
 class LeaderboardEntry(BaseModel):
     rank: int

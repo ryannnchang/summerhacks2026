@@ -1,22 +1,32 @@
 """Decides whether a photo actually shows grass, and how good the grass is.
 
-Pure-CV heuristic, no model download required — good enough for a demo and fast.
-Three signals:
-  coverage  fraction of pixels that are "vegetation green" in HSV
-  texture   local variance inside the green region (real grass is noisy;
-            a green wall, a screenshot, or a foam soccer field is flat)
-  vibrance  mean saturation of the green region (healthy grass vs. dead/washed out)
+Two judges share one contract (`GrassResult`):
 
-Swap `verify_grass` for a model call later; the return shape is the contract.
+  Gemini (services/gemini_judge.py)  the real judge whenever GEMINI_API_KEY is
+        set — authenticity gate, lushness/biodiversity scoring, feature
+        extraction for the glyphs.
+  CV heuristic (this file)  HSV coverage + edge texture + saturation vibrance.
+        Judges alone when there is no key, and catches every Gemini failure so
+        an API outage never turns into a spinner on stage.
+
+The local pixel signals (coverage / texture / vibrance / dominant color) are
+computed on every submission regardless of judge — they cost milliseconds and
+keep those DB columns meaningful for re-tuning later.
 """
 
-from dataclasses import dataclass
+import logging
+import re
+from dataclasses import dataclass, replace
 from io import BytesIO
 
 import numpy as np
 from PIL import Image, ImageFilter
 
 from app.config import settings
+from app.services import gemini_judge
+from app.services.gemini_judge import GeminiVerdict
+
+logger = logging.getLogger(__name__)
 
 # Vegetation band in HSV. PIL hue is 0-255, so green sits around 60-110.
 HUE_MIN, HUE_MAX = 55, 115
@@ -35,6 +45,14 @@ class GrassResult:
     quality: float  # 0-100
     reason: str | None
     dominant_color: str
+
+    # Gemini-only signals; None when the heuristic judged. Palette and features
+    # are what the glyph generator will consume.
+    lushness: float | None = None
+    biodiversity: float | None = None
+    palette: list[str] | None = None
+    features: list[str] | None = None
+    source: str = "heuristic"  # which judge produced the verdict
 
 
 def _dominant_green_hex(rgb: np.ndarray, mask: np.ndarray) -> str:
@@ -87,8 +105,60 @@ def analyze_image(image: Image.Image) -> GrassResult:
     )
 
 
+# Gemini's 0-100 signals -> one 0-100 quality score. Biodiversity is weighted
+# heavily on purpose: weeds and flowers should beat a boring mowed lawn.
+GEMINI_LUSHNESS_WEIGHT = 0.45
+GEMINI_BIODIVERSITY_WEIGHT = 0.35
+GEMINI_COVERAGE_WEIGHT = 0.20
+
+_HEX_COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
+
+
+def merge_gemini(base: GrassResult, verdict: GeminiVerdict) -> GrassResult:
+    """Overlays Gemini's judgement on the locally computed pixel signals."""
+    is_grass = verdict.authentic and verdict.is_grass
+
+    reason: str | None = None
+    if not is_grass:
+        reason = (verdict.rejection_reason or "").strip() or "That doesn't look like real grass."
+
+    quality = 0.0
+    if is_grass:
+        quality = round(
+            GEMINI_LUSHNESS_WEIGHT * verdict.lushness
+            + GEMINI_BIODIVERSITY_WEIGHT * verdict.biodiversity
+            + GEMINI_COVERAGE_WEIGHT * verdict.coverage,
+            2,
+        )
+
+    palette = [c.lower() for c in verdict.palette if _HEX_COLOR.match(c)][:5]
+    features = [f.strip().lower() for f in verdict.features if f.strip()][:8]
+
+    return replace(
+        base,
+        is_grass=is_grass,
+        reason=reason,
+        quality=quality,
+        lushness=float(verdict.lushness),
+        biodiversity=float(verdict.biodiversity),
+        palette=palette or None,
+        features=features or None,
+        source="gemini",
+    )
+
+
 def verify_grass(image_bytes: bytes) -> tuple[GrassResult, Image.Image]:
-    """Returns the verdict plus the decoded image (so callers don't decode twice)."""
+    """Returns the verdict plus the decoded image (so callers don't decode twice).
+
+    Blocking (Gemini is a network round trip) — call it off the event loop.
+    """
     image = Image.open(BytesIO(image_bytes))
     image.load()
-    return analyze_image(image), image
+
+    result = analyze_image(image)
+    if settings.gemini_api_key:
+        try:
+            result = merge_gemini(result, gemini_judge.judge(image))
+        except Exception:
+            logger.warning("Gemini judge failed; falling back to CV heuristic", exc_info=True)
+    return result, image

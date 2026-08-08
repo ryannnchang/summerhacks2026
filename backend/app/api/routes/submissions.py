@@ -1,6 +1,8 @@
+import json
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
+from fastapi.concurrency import run_in_threadpool
 from PIL import UnidentifiedImageError
 
 from app import storage
@@ -20,6 +22,7 @@ ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp", "image/heic"}
 
 
 def _to_out(submission: Submission, username: str | None = None) -> SubmissionOut:
+    extras: dict = json.loads(submission.features_json) if submission.features_json else {}
     return SubmissionOut(
         id=submission.id,
         user_id=submission.user_id,
@@ -36,6 +39,11 @@ def _to_out(submission: Submission, username: str | None = None) -> SubmissionOu
         image_url=storage.public_url(submission.image_path),
         thumbnail_url=storage.public_url(submission.thumbnail_path),
         username=username,
+        lushness=submission.lushness,
+        biodiversity=submission.biodiversity,
+        palette=extras.get("palette"),
+        features=extras.get("features"),
+        verdict_source=submission.verdict_source,
     )
 
 
@@ -78,7 +86,9 @@ async def submit_grass(
         raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "That photo is too large")
 
     try:
-        verdict, image = verify_grass(raw)
+        # Threadpool because the Gemini judge is a blocking network round trip —
+        # on the event loop it would stall the drop scheduler and every WebSocket.
+        verdict, image = await run_in_threadpool(verify_grass, raw)
     except UnidentifiedImageError:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "That file is not a readable image")
 
@@ -100,6 +110,14 @@ async def submit_grass(
         dominant_color=verdict.dominant_color,
         latitude=latitude,
         longitude=longitude,
+        lushness=verdict.lushness,
+        biodiversity=verdict.biodiversity,
+        features_json=(
+            json.dumps({"palette": verdict.palette, "features": verdict.features})
+            if verdict.palette or verdict.features
+            else None
+        ),
+        verdict_source=verdict.source,
         submitted_at=now,
     )
 

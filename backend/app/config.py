@@ -21,9 +21,15 @@ class Settings(BaseSettings):
     drop_min_gap_seconds: int = 60 * 60  # earliest next drop after one closes
     drop_max_gap_seconds: int = 6 * 60 * 60  # latest next drop
 
-    # Grass verification thresholds
+    # Grass verification thresholds (local CV heuristic)
     min_grass_coverage: float = 0.25  # fraction of green pixels to count as grass
     min_texture_score: float = 0.05  # rejects flat green walls / screens
+
+    # Gemini vision judging. With a key set, Gemini is the judge and the CV
+    # heuristic becomes the fallback; without one, the heuristic judges alone.
+    gemini_api_key: str | None = None
+    gemini_model: str = "gemini-2.5-flash"
+    gemini_timeout_seconds: float = 25.0
 
     # Mural
     mural_columns: int = 24

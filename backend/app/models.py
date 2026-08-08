@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from enum import Enum
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -115,6 +115,13 @@ class Submission(Base):
     # Where the grass was. Optional — the browser may refuse to share location.
     latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    # Gemini judge extras. Null when the CV heuristic judged (no key / fallback).
+    # features_json holds {"palette": [...], "features": [...]} for the glyphs.
+    lushness: Mapped[float | None] = mapped_column(Float, nullable=True)
+    biodiversity: Mapped[float | None] = mapped_column(Float, nullable=True)
+    features_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    verdict_source: Mapped[str | None] = mapped_column(String(16), nullable=True)
 
     user: Mapped[User] = relationship(back_populates="submissions")
     drop: Mapped[Drop] = relationship(back_populates="submissions")

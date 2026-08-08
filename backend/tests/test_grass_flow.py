@@ -7,6 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 
+from app.config import settings
 from app.database import Base, engine
 from app.main import app
 
@@ -17,6 +18,12 @@ def fresh_db():
     Base.metadata.create_all(bind=engine)
     yield
     Base.metadata.drop_all(bind=engine)
+
+
+@pytest.fixture(autouse=True)
+def force_heuristic_judge(monkeypatch):
+    """Keep tests offline and deterministic even when a real key is in .env."""
+    monkeypatch.setattr(settings, "gemini_api_key", None)
 
 
 @pytest.fixture
@@ -193,3 +200,77 @@ def test_map_skips_submissions_without_coordinates(client):
     # Still counts for score and mural, just not on the map.
     assert client.get("/api/mural").json()["tile_count"] == 1
     assert client.get("/api/map/patches").json()["patch_count"] == 0
+
+
+# --- Gemini verdict mapping (pure logic, no network) ---
+
+
+def _base_result():
+    from app.services.grass_verifier import GrassResult
+
+    return GrassResult(
+        is_grass=True,
+        coverage=0.5,
+        texture=0.12,
+        vibrance=0.4,
+        quality=70.0,
+        reason=None,
+        dominant_color="#2d5a27",
+    )
+
+
+def test_gemini_verdict_overlays_heuristic():
+    from app.services.gemini_judge import GeminiVerdict
+    from app.services.grass_verifier import merge_gemini
+
+    verdict = GeminiVerdict(
+        authentic=True,
+        is_grass=True,
+        rejection_reason=None,
+        coverage=80,
+        lushness=90,
+        biodiversity=40,
+        palette=["#2D5A27", "not-a-color", "#6b9955"],
+        features=["Clover", "  ", "moss"],
+    )
+    merged = merge_gemini(_base_result(), verdict)
+
+    assert merged.is_grass and merged.reason is None
+    assert merged.source == "gemini"
+    assert merged.quality == round(0.45 * 90 + 0.35 * 40 + 0.20 * 80, 2)
+    assert merged.palette == ["#2d5a27", "#6b9955"]  # invalid hex dropped, lowered
+    assert merged.features == ["clover", "moss"]
+    # local pixel signals survive the overlay
+    assert merged.coverage == 0.5 and merged.dominant_color == "#2d5a27"
+
+
+def test_gemini_inauthentic_rejects_even_if_grassy():
+    from app.services.gemini_judge import GeminiVerdict
+    from app.services.grass_verifier import merge_gemini
+
+    verdict = GeminiVerdict(
+        authentic=False,  # a screen showing a lawn
+        is_grass=True,
+        rejection_reason="That's a screen. Go outside.",
+        coverage=90,
+        lushness=95,
+        biodiversity=50,
+    )
+    merged = merge_gemini(_base_result(), verdict)
+
+    assert not merged.is_grass
+    assert merged.quality == 0.0
+    assert merged.reason == "That's a screen. Go outside."
+
+
+def test_gemini_rejection_gets_default_reason():
+    from app.services.gemini_judge import GeminiVerdict
+    from app.services.grass_verifier import merge_gemini
+
+    verdict = GeminiVerdict(
+        authentic=True, is_grass=False, coverage=5, lushness=0, biodiversity=0
+    )
+    merged = merge_gemini(_base_result(), verdict)
+
+    assert not merged.is_grass
+    assert merged.reason  # never None on a rejection
