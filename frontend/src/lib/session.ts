@@ -1,13 +1,11 @@
 /**
- * Persisted session, the counterpart to the design mock's `lib/storage.ts`.
+ * Persisted session.
  *
- * The mock stored a made-up `{ name, groupCode }`. Here we store the two things
- * the real API actually needs: the user id that goes out as `X-User-Id`, and
- * whichever group the bottom-nav tabs are currently looking at.
+ * Just the backend user id, which goes out as `X-User-Id`. There is no active
+ * group any more — drops are global, so a group only filters the leaderboard.
  */
 
 const USER_ID_KEY = 'cg_user_id'
-const GROUP_ID_KEY = 'cg_group_id'
 
 function readNumber(key: string): number | null {
   const raw = window.localStorage.getItem(key)
@@ -24,12 +22,8 @@ function writeNumber(key: string, value: number | null): void {
 export const getUserId = (): number | null => readNumber(USER_ID_KEY)
 export const setUserId = (id: number | null): void => writeNumber(USER_ID_KEY, id)
 
-export const getActiveGroupId = (): number | null => readNumber(GROUP_ID_KEY)
-export const setActiveGroupId = (id: number | null): void => writeNumber(GROUP_ID_KEY, id)
-
 export function clearSession(): void {
   setUserId(null)
-  setActiveGroupId(null)
 }
 
 /**

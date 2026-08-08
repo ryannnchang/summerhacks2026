@@ -30,7 +30,6 @@ export type DropStatus = 'pending' | 'active' | 'closed'
 
 export interface Drop {
   id: number
-  group_id: number
   status: DropStatus
   scheduled_for: string
   started_at: string | null
@@ -67,9 +66,9 @@ export interface Submission {
 
 export interface LeaderboardEntry {
   rank: number
-  user_id: number
   username: string
   display_name: string
+  elo: number
   total_score: number
   streak: number
   submissions: number
@@ -111,8 +110,8 @@ export interface MapData {
   patches: MapPatch[]
 }
 
-export type GroupEvent =
-  | { type: 'connected'; group_id: number }
+export type DropEvent =
+  | { type: 'connected' }
   | { type: 'drop.started'; drop_id: number; expires_at: string; triggered_by?: string }
   | { type: 'drop.closed'; drop_id: number }
   | {

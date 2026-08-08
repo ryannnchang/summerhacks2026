@@ -23,7 +23,6 @@ export function ReviewPage() {
       if (!pending) return
       try {
         const submission = await api.submitGrass(
-          pending.groupId,
           pending.dropId,
           pending.file,
           await currentCoords(),

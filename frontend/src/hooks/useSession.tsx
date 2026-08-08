@@ -3,13 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { ReactNode } from 'react'
 
 import { linkBackendUser } from '../lib/backendUser'
-import {
-  clearSession,
-  getActiveGroupId,
-  setActiveGroupId,
-  setReturnTo,
-  setUserId,
-} from '../lib/session'
+import { clearSession, setReturnTo, setUserId } from '../lib/session'
 import { supabase } from '../lib/supabase'
 import type { User } from '../types'
 
@@ -18,13 +12,11 @@ interface SessionValue {
   user: User | null
   /** The raw Supabase session, for the avatar/email in the UI. */
   session: Session | null
-  groupId: number | null
   /** True until Supabase has reported a session and the backend link has resolved. */
   loading: boolean
   error: string | null
   /** `returnTo` is restored after the OAuth round-trip; defaults to the current page. */
   signInWithGoogle: (returnTo?: string) => Promise<void>
-  selectGroup: (groupId: number | null) => void
   signOut: () => Promise<void>
 }
 
@@ -33,7 +25,6 @@ const SessionContext = createContext<SessionValue | null>(null)
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [user, setUser] = useState<User | null>(null)
-  const [groupId, setGroupId] = useState<number | null>(() => getActiveGroupId())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -53,7 +44,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         linkedFor.current = null
         clearSession()
         setUser(null)
-        setGroupId(null)
         setLoading(false)
         return
       }
@@ -100,30 +90,22 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     if (authError) setError(authError.message)
   }, [])
 
-  const selectGroup = useCallback((next: number | null) => {
-    setActiveGroupId(next)
-    setGroupId(next)
-  }, [])
-
   const signOut = useCallback(async () => {
     await supabase.auth.signOut()
     clearSession()
     setUser(null)
-    setGroupId(null)
   }, [])
 
   const value = useMemo<SessionValue>(
     () => ({
       user,
       session,
-      groupId,
       loading,
       error,
       signInWithGoogle,
-      selectGroup,
       signOut,
     }),
-    [user, session, groupId, loading, error, signInWithGoogle, selectGroup, signOut],
+    [user, session, loading, error, signInWithGoogle, signOut],
   )
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>

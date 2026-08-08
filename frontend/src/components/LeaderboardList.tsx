@@ -53,14 +53,21 @@ export function LeaderboardList({ rows, currentUsername, emptyMessage }: Props) 
               <div className="flex items-center gap-2">
                 <Streak streak={row.streak} />
                 <span className="text-chalk/40 text-[10px] font-mono">
-                  {row.submissions} drop{row.submissions === 1 ? '' : 's'}
+                  {Math.round(row.total_score).toLocaleString()} pts · {row.submissions} drop
+                  {row.submissions === 1 ? '' : 's'}
                 </span>
               </div>
             </div>
 
-            <p className="font-mono text-scoreboard font-bold text-sm flex-shrink-0">
-              {Math.round(row.total_score).toLocaleString()}
-            </p>
+            {/* Elo decides the rank, so it gets the big number. */}
+            <div className="text-right flex-shrink-0">
+              <p className="font-mono text-scoreboard font-bold text-base tabular-nums leading-none">
+                {row.elo}
+              </p>
+              <p className="text-chalk/40 text-[9px] font-mono mt-0.5">
+                {row.submissions < 10 ? 'PROVISIONAL' : 'ELO'}
+              </p>
+            </div>
           </li>
         )
       })}

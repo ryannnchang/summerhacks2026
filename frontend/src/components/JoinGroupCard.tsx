@@ -7,8 +7,10 @@ const INPUT =
   'w-full bg-turf-900 border border-chalk/20 rounded-lg px-3 py-2.5 text-chalk text-sm placeholder:text-chalk/30 focus:outline-none focus:ring-2 focus:ring-scoreboard'
 
 /**
- * Group create/join, inline on the Friends tab. There's no /groups page any more,
- * so this empty state is the only way into a group.
+ * Group create/join, inline on the Friends tab.
+ *
+ * Groups no longer gate play — drops are global. All a group does now is decide
+ * who shows up when the leaderboard is filtered to Friends.
  */
 export function JoinGroupCard({ onJoined }: { onJoined: (group: Group) => void }) {
   const [name, setName] = useState('')
@@ -31,9 +33,9 @@ export function JoinGroupCard({ onJoined }: { onJoined: (group: Group) => void }
   return (
     <div className="bg-turf-800/60 chalk-border rounded-2xl p-5 flex flex-col gap-5">
       <div>
-        <p className="font-display text-2xl tracking-wide text-chalk leading-none">NO CREW YET</p>
+        <p className="font-display text-2xl tracking-wide text-chalk leading-none">ADD FRIENDS</p>
         <p className="text-chalk/60 text-sm mt-1">
-          Friends rankings need a group. Start one, or join with a code.
+          Share a group and you'll see each other here. You're already scoring either way.
         </p>
       </div>
 

@@ -13,6 +13,14 @@ class UserCreate(BaseModel):
     display_name: str | None = Field(default=None, max_length=64)
 
 
+class UserLink(BaseModel):
+    """Claims the backend account behind a Supabase (Google) identity."""
+
+    supabase_uid: str = Field(min_length=8, max_length=36)
+    username: str = Field(min_length=2, max_length=32, pattern=r"^[a-zA-Z0-9_.-]+$")
+    display_name: str | None = Field(default=None, max_length=64)
+
+
 class UserOut(ORMModel):
     id: int
     username: str
@@ -53,7 +61,6 @@ class GroupDetail(GroupOut):
 # --- drops ---
 class DropOut(ORMModel):
     id: int
-    group_id: int
     status: str
     scheduled_for: datetime
     started_at: datetime | None
@@ -91,9 +98,9 @@ class SubmissionOut(ORMModel):
 
 class LeaderboardEntry(BaseModel):
     rank: int
-    user_id: int
     username: str
     display_name: str
+    elo: int
     total_score: float
     streak: int
     submissions: int

@@ -1,27 +1,25 @@
 import { useEffect, useRef, useState } from 'react'
 
-import { groupSocketUrl } from '../api/client'
-import type { GroupEvent } from '../types'
+import { dropSocketUrl } from '../api/client'
+import type { DropEvent } from '../types'
 
 const HEARTBEAT_MS = 25_000
 const RECONNECT_MS = 3_000
 
-/** Subscribes to a group's live feed. Reconnects on drop. */
-export function useGroupSocket(groupId: number | null, onEvent: (event: GroupEvent) => void) {
+/** Subscribes to the global drop feed. Reconnects on drop. */
+export function useDropSocket(onEvent: (event: DropEvent) => void) {
   const [connected, setConnected] = useState(false)
   const handler = useRef(onEvent)
   handler.current = onEvent
 
   useEffect(() => {
-    if (groupId === null) return
-
     let socket: WebSocket | null = null
     let heartbeat: number | undefined
     let retry: number | undefined
     let closed = false
 
     const open = () => {
-      socket = new WebSocket(groupSocketUrl(groupId))
+      socket = new WebSocket(dropSocketUrl())
 
       socket.onopen = () => {
         setConnected(true)
@@ -29,7 +27,7 @@ export function useGroupSocket(groupId: number | null, onEvent: (event: GroupEve
       }
       socket.onmessage = (event) => {
         try {
-          handler.current(JSON.parse(event.data) as GroupEvent)
+          handler.current(JSON.parse(event.data) as DropEvent)
         } catch {
           /* ignore malformed frames */
         }
@@ -49,7 +47,7 @@ export function useGroupSocket(groupId: number | null, onEvent: (event: GroupEve
       window.clearTimeout(retry)
       socket?.close()
     }
-  }, [groupId])
+  }, [])
 
   return connected
 }

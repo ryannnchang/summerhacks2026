@@ -1,6 +1,6 @@
 import type { User as SupabaseUser } from '@supabase/supabase-js'
 
-import { ApiError, api } from '../api/client'
+import { api } from '../api/client'
 import type { User } from '../types'
 
 /**
@@ -8,8 +8,7 @@ import type { User } from '../types'
  *
  * The suffix is the point. Two Google accounts can share an email local-part
  * (ryan@gmail.com, ryan@outlook.com), and without it the second person to sign in
- * would be handed the first person's backend account. Keying off the Supabase uid
- * makes this unique per identity and stable across logins.
+ * would be handed the first person's backend account.
  *
  * Backend constraint is /^[a-zA-Z0-9_.-]+$/, 2-32 chars — 23 + 1 + 8 fits.
  */
@@ -28,20 +27,13 @@ function displayNameFor(user: SupabaseUser): string {
 }
 
 /**
- * Finds or creates the FastAPI user row backing a Supabase identity.
+ * Claims the backend account behind a Supabase identity.
  *
- * The backend still authenticates with `X-User-Id`, so every Supabase account needs
- * a corresponding integer id. Replace this whole module once the backend verifies
- * Supabase JWTs directly.
+ * The backend keys game data on integer user ids and the leaderboard on the
+ * Supabase uuid, so it needs both. `/users/link` is idempotent and also creates
+ * the `players` row — which is why the leaderboard works whether or not the
+ * `on_auth_user_created` trigger is installed in Supabase.
  */
 export async function linkBackendUser(user: SupabaseUser): Promise<User> {
-  const username = usernameFor(user)
-
-  const existing = await api.lookupUser(username).catch((err: unknown) => {
-    if (err instanceof ApiError && err.status === 404) return null
-    throw err
-  })
-  if (existing) return existing
-
-  return api.signUp(username, displayNameFor(user))
+  return api.linkUser(user.id, usernameFor(user), displayNameFor(user))
 }

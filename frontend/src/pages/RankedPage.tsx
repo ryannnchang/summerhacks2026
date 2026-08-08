@@ -5,20 +5,19 @@ import { DropStatus } from '../components/DropStatus'
 import { JoinGroupCard } from '../components/JoinGroupCard'
 import { LeaderboardList } from '../components/LeaderboardList'
 import { SignInPrompt } from '../components/SignInPrompt'
-import { useGroupSocket } from '../hooks/useGroupSocket'
+import { useDropSocket } from '../hooks/useDropSocket'
 import { useSession } from '../hooks/useSession'
-import { globalLeaderboard, toBoardRows } from '../lib/leaderboards'
+import { toBoardRows } from '../lib/leaderboards'
 import type { BoardRow } from '../lib/leaderboards'
-import type { Drop, Group } from '../types'
+import type { Drop } from '../types'
 
 type Scope = 'global' | 'friends'
 
 export function RankedPage() {
-  const { user, groupId, selectGroup, signOut } = useSession()
+  const { user, signOut } = useSession()
   const signedIn = Boolean(user)
 
   const [scope, setScope] = useState<Scope>('global')
-  const [group, setGroup] = useState<Group | null>(null)
   const [drop, setDrop] = useState<Drop | null>(null)
   const [global, setGlobal] = useState<BoardRow[]>([])
   const [friends, setFriends] = useState<BoardRow[]>([])
@@ -28,45 +27,24 @@ export function RankedPage() {
 
   const refresh = useCallback(async () => {
     try {
-      // The global board comes from the public mural, so it loads either way.
-      setGlobal(await globalLeaderboard())
-
-      if (!user) {
-        setGroup(null)
-        setDrop(null)
-        setFriends([])
-        setError(null)
-        return
-      }
-
-      const groups = await api.listGroups()
-
-      // No /groups page any more, so land the visitor in a group automatically.
-      // Clearing on the empty case matters too: a stale id from a group they left
-      // would otherwise follow them into /capture.
-      const active = groups.find((g) => g.id === groupId) ?? groups[0] ?? null
-      setGroup(active)
-      if ((active?.id ?? null) !== groupId) selectGroup(active?.id ?? null)
-
-      const [current, board] = await Promise.all([
-        active ? api.currentDrop(active.id) : Promise.resolve(null),
-        active ? api.leaderboard(active.id) : Promise.resolve([]),
-      ])
+      // The drop clock and the global board are public, so both load either way.
+      const [current, board] = await Promise.all([api.currentDrop(), api.leaderboard('global')])
       setDrop(current)
-      setFriends(toBoardRows(board))
+      setGlobal(toBoardRows(board))
+      setFriends(user ? toBoardRows(await api.leaderboard('friends')) : [])
       setError(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load the rankings')
     } finally {
       setLoading(false)
     }
-  }, [user, groupId, selectGroup])
+  }, [user])
 
   useEffect(() => {
     void refresh()
   }, [refresh])
 
-  useGroupSocket(group?.id ?? null, (event) => {
+  useDropSocket((event) => {
     if (event.type === 'drop.started') notifyDrop()
     if (
       event.type === 'drop.started' ||
@@ -78,14 +56,10 @@ export function RankedPage() {
   })
 
   async function trigger() {
-    if (!group) {
-      setError('Join a group before starting a drop.')
-      return
-    }
     setTriggering(true)
     setError(null)
     try {
-      setDrop(await api.triggerDrop(group.id))
+      setDrop(await api.triggerDrop())
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not start a drop')
     } finally {
@@ -113,33 +87,20 @@ export function RankedPage() {
       </header>
 
       <div className="mb-6">
-        {signedIn && group ? (
+        {signedIn ? (
           <DropStatus drop={drop} onTrigger={() => void trigger()} triggering={triggering} />
-        ) : signedIn ? (
-          // Drops belong to a group, so there is nothing to trigger yet. Showing
-          // DropStatus here would render a "DROP NOW" button that can't do anything.
-          <div className="bg-turf-800/60 chalk-border rounded-2xl p-5 flex flex-col gap-3">
-            <div>
-              <p className="font-display text-2xl tracking-wide text-chalk leading-none">
-                NO CREW YET
-              </p>
-              <p className="text-chalk/60 text-sm mt-1">
-                Drops go out to a group. Start one or join with a code, then the clock can run.
-              </p>
-            </div>
-            <button
-              onClick={() => setScope('friends')}
-              className="w-full bg-scoreboard hover:bg-scoreboard-dim text-turf-900 font-display text-lg tracking-wide py-2.5 rounded-xl transition-colors"
-            >
-              SET UP A GROUP
-            </button>
-          </div>
         ) : (
-          <SignInPrompt
-            title="WATCHING FROM THE BLEACHERS"
-            body="Anyone can watch the rankings. Sign in to get drop alerts and put your own grass on the board."
-            returnTo="/capture"
-          />
+          <>
+            {/* Signed-out visitors still see the clock — they just can't shoot. */}
+            <div className="mb-3">
+              <DropStatus drop={drop} readOnly />
+            </div>
+            <SignInPrompt
+              title="WATCHING FROM THE BLEACHERS"
+              body="Anyone can watch the clock and the rankings. Sign in to put your own grass on the board."
+              returnTo="/capture"
+            />
+          </>
         )}
       </div>
 
@@ -163,7 +124,7 @@ export function RankedPage() {
         <LeaderboardList
           rows={global}
           currentUsername={user?.username}
-          emptyMessage="No verified grass anywhere yet. The first patch sets the bar."
+          emptyMessage="No verified grass yet. The first patch sets the bar."
         />
       ) : !signedIn ? (
         <SignInPrompt
@@ -171,21 +132,16 @@ export function RankedPage() {
           body="Sign in to see how your crew is doing."
           returnTo="/"
         />
-      ) : !group ? (
-        <JoinGroupCard
-          onJoined={(joined) => {
-            selectGroup(joined.id)
-            void refresh()
-          }}
-        />
       ) : (
-        <LeaderboardList rows={friends} currentUsername={user?.username} />
-      )}
-
-      {scope === 'friends' && group && (
-        <p className="text-chalk/40 text-xs font-mono text-center mt-4">
-          {group.name.toUpperCase()} · CODE {group.join_code}
-        </p>
+        <div className="flex flex-col gap-4">
+          <LeaderboardList
+            rows={friends}
+            currentUsername={user?.username}
+            emptyMessage="Just you so far. Share a group code and your friends show up here."
+          />
+          {/* The only place groups are managed now, and it never blocks play. */}
+          <JoinGroupCard onJoined={() => void refresh()} />
+        </div>
       )}
 
       {error && (

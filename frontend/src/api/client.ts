@@ -68,6 +68,12 @@ export const api = {
     }),
   lookupUser: (username: string) =>
     request<User>(`/users/by-username/${encodeURIComponent(username)}`),
+  /** Finds or creates the backend account behind a Google identity. Idempotent. */
+  linkUser: (supabaseUid: string, username: string, displayName: string) =>
+    request<User>('/users/link', {
+      method: 'POST',
+      body: json({ supabase_uid: supabaseUid, username, display_name: displayName }),
+    }),
   me: () => request<User>('/users/me'),
 
   // groups
@@ -85,34 +91,27 @@ export const api = {
     }),
   removeMember: (groupId: number, userId: number) =>
     request<void>(`/groups/${groupId}/members/${userId}`, { method: 'DELETE' }),
-  leaderboard: (groupId: number) => request<LeaderboardEntry[]>(`/groups/${groupId}/leaderboard`),
 
-  // drops
-  currentDrop: (groupId: number) => request<Drop | null>(`/groups/${groupId}/drops/current`),
-  listDrops: (groupId: number) => request<Drop[]>(`/groups/${groupId}/drops`),
-  triggerDrop: (groupId: number) =>
-    request<Drop>(`/groups/${groupId}/drops/trigger`, { method: 'POST' }),
+  // leaderboard — one ranking, two views. 'global' is public; 'friends' needs auth.
+  leaderboard: (scope: 'global' | 'friends' = 'global') =>
+    request<LeaderboardEntry[]>(`/leaderboard?scope=${scope}`),
+
+  // drops — global, one at a time. The clock is public.
+  currentDrop: () => request<Drop>('/drops/current'),
+  listDrops: () => request<Drop[]>('/drops'),
+  triggerDrop: () => request<Drop>('/drops/trigger', { method: 'POST' }),
 
   // submissions
-  submitGrass: (
-    groupId: number,
-    dropId: number,
-    photo: File,
-    coords?: { latitude: number; longitude: number },
-  ) => {
+  submitGrass: (dropId: number, photo: File, coords?: { latitude: number; longitude: number }) => {
     const form = new FormData()
     form.append('photo', photo)
     if (coords) {
       form.append('latitude', String(coords.latitude))
       form.append('longitude', String(coords.longitude))
     }
-    return request<Submission>(`/groups/${groupId}/drops/${dropId}/submissions`, {
-      method: 'POST',
-      body: form,
-    })
+    return request<Submission>(`/drops/${dropId}/submissions`, { method: 'POST', body: form })
   },
-  dropSubmissions: (groupId: number, dropId: number) =>
-    request<Submission[]>(`/groups/${groupId}/drops/${dropId}/submissions`),
+  dropSubmissions: (dropId: number) => request<Submission[]>(`/drops/${dropId}/submissions`),
   mySubmissions: () => request<Submission[]>('/users/me/submissions'),
 
   // mural
@@ -123,7 +122,7 @@ export const api = {
     request<MapData>(`/map/patches${sinceHours ? `?since_hours=${sinceHours}` : ''}`),
 }
 
-export function groupSocketUrl(groupId: number): string {
+export function dropSocketUrl(): string {
   const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
-  return `${protocol}//${location.host}${BASE}/ws/groups/${groupId}`
+  return `${protocol}//${location.host}${BASE}/ws/drops`
 }

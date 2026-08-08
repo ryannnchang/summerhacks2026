@@ -1,16 +1,14 @@
 import { useEffect, useState } from 'react'
-import { Navigate, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 
 import { api } from '../api/client'
 import { CameraCapture } from '../components/CameraCapture'
 import { formatDuration, useCountdown } from '../hooks/useCountdown'
-import { useSession } from '../hooks/useSession'
 import { setPendingPhoto } from '../lib/pendingPhoto'
 import type { Drop } from '../types'
 
 export function CapturePage() {
   const navigate = useNavigate()
-  const { groupId } = useSession()
 
   const [drop, setDrop] = useState<Drop | null>(null)
   const [loading, setLoading] = useState(true)
@@ -19,26 +17,18 @@ export function CapturePage() {
   const remaining = useCountdown(drop?.status === 'active' ? drop.expires_at : null)
 
   useEffect(() => {
-    if (groupId === null) return
     api
-      .currentDrop(groupId)
+      .currentDrop()
       .then(setDrop)
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false))
-  }, [groupId])
+  }, [])
 
   function handleCapture(file: File) {
-    if (groupId === null || !drop) return
-    setPendingPhoto({
-      file,
-      previewUrl: URL.createObjectURL(file),
-      groupId,
-      dropId: drop.id,
-    })
+    if (!drop) return
+    setPendingPhoto({ file, previewUrl: URL.createObjectURL(file), dropId: drop.id })
     navigate('/review')
   }
-
-  if (groupId === null) return <Navigate to="/" replace />
 
   const open = drop?.status === 'active' && !drop.has_submitted
 

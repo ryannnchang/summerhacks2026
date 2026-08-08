@@ -6,24 +6,23 @@ import { ScoreboardTimer } from './ScoreboardTimer'
 
 interface Props {
   drop: Drop | null
-  onTrigger: () => void
-  triggering: boolean
+  onTrigger?: () => void
+  triggering?: boolean
+  /** Signed-out view: show the clock, but no camera link and no trigger. */
+  readOnly?: boolean
 }
 
 /**
- * The live/not-live band under the title. When a drop is open this is the only
- * route into the camera, so it has to read as the primary action.
+ * The live/not-live band under the title. The drop is global, so this is the same
+ * clock for everyone — and when it's open, the only route into the camera.
  */
-export function DropStatus({ drop, onTrigger, triggering }: Props) {
+export function DropStatus({ drop, onTrigger, triggering, readOnly }: Props) {
   const remaining = useCountdown(drop?.status === 'active' ? drop.expires_at : null)
   const live = drop?.status === 'active'
 
   if (live && drop && !drop.has_submitted) {
-    return (
-      <Link
-        to="/capture"
-        className="block bg-scoreboard text-turf-900 rounded-2xl chalk-border-solid p-5 shadow-lg active:scale-[0.98] transition-transform"
-      >
+    const body = (
+      <>
         <div className="flex items-center gap-2 mb-3">
           <span className="relative flex h-2.5 w-2.5">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-turf-900 opacity-60" />
@@ -36,10 +35,21 @@ export function DropStatus({ drop, onTrigger, triggering }: Props) {
 
         <div className="flex items-center justify-between gap-3">
           <ScoreboardTimer seconds={remaining} />
-          <span className="font-display text-xl tracking-wide underline underline-offset-4">
-            OPEN CAMERA →
-          </span>
+          {!readOnly && (
+            <span className="font-display text-xl tracking-wide underline underline-offset-4">
+              OPEN CAMERA →
+            </span>
+          )}
         </div>
+      </>
+    )
+
+    const skin = 'block w-full text-left bg-scoreboard text-turf-900 rounded-2xl chalk-border-solid p-5 shadow-lg'
+    return readOnly ? (
+      <div className={skin}>{body}</div>
+    ) : (
+      <Link to="/capture" className={`${skin} active:scale-[0.98] transition-transform`}>
+        {body}
       </Link>
     )
   }
@@ -72,13 +82,15 @@ export function DropStatus({ drop, onTrigger, triggering }: Props) {
             : 'Nothing scheduled yet.'}
         </p>
       </div>
-      <button
-        onClick={onTrigger}
-        disabled={triggering}
-        className="flex-shrink-0 border border-chalk/20 text-chalk/70 hover:text-chalk hover:border-chalk/40 disabled:opacity-50 font-mono text-[10px] tracking-widest px-3 py-2 rounded-lg transition-colors"
-      >
-        {triggering ? 'DROPPING…' : 'DROP NOW'}
-      </button>
+      {!readOnly && onTrigger && (
+        <button
+          onClick={onTrigger}
+          disabled={triggering}
+          className="flex-shrink-0 border border-chalk/20 text-chalk/70 hover:text-chalk hover:border-chalk/40 disabled:opacity-50 font-mono text-[10px] tracking-widest px-3 py-2 rounded-lg transition-colors"
+        >
+          {triggering ? 'DROPPING…' : 'DROP NOW'}
+        </button>
+      )}
     </div>
   )
 }

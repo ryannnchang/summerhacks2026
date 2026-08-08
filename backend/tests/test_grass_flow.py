@@ -1,6 +1,11 @@
-"""End-to-end smoke test: user -> group -> drop -> submission -> mural."""
+"""End-to-end smoke test: user -> drop -> submission -> mural.
+
+Drops are global, so no group is needed to play. Groups only scope the
+"friends" view of the leaderboard.
+"""
 
 import random
+import uuid
 from io import BytesIO
 
 import pytest
@@ -63,8 +68,17 @@ def not_grass() -> bytes:
 
 
 def make_user(client, username):
-    r = client.post("/api/users", json={"username": username})
-    assert r.status_code == 201, r.text
+    """Mirrors the real flow: Google sign-in -> /users/link -> a players row.
+
+    The leaderboard reads `players`, so an account created without linking has no
+    row there and never appears on the board.
+    """
+    uid = f"{uuid.uuid5(uuid.NAMESPACE_DNS, username)}"
+    r = client.post(
+        "/api/users/link",
+        json={"supabase_uid": uid, "username": username, "display_name": username},
+    )
+    assert r.status_code == 200, r.text
     return r.json()["id"]
 
 
@@ -81,12 +95,12 @@ def test_full_grass_loop(client):
     r = client.post(f"/api/groups/{group['id']}/members/sam", headers=headers)
     assert r.status_code == 201, r.text
 
-    r = client.post(f"/api/groups/{group['id']}/drops/trigger", headers=headers)
+    r = client.post("/api/drops/trigger", headers=headers)
     assert r.status_code == 200, r.text
     drop = r.json()
     assert drop["status"] == "active"
 
-    url = f"/api/groups/{group['id']}/drops/{drop['id']}/submissions"
+    url = f"/api/drops/{drop['id']}/submissions"
     r = client.post(url, headers=headers, files={"photo": ("g.jpg", fake_grass(), "image/jpeg")})
     assert r.status_code == 201, r.text
     sub = r.json()
@@ -98,7 +112,7 @@ def test_full_grass_loop(client):
     r = client.post(url, headers=headers, files={"photo": ("g.jpg", fake_grass(), "image/jpeg")})
     assert r.status_code == 409
 
-    r = client.get(f"/api/groups/{group['id']}/leaderboard", headers=headers)
+    r = client.get("/api/leaderboard?scope=friends", headers=headers)
     board = r.json()
     assert board[0]["username"] == "ryan"
     assert board[0]["submissions"] == 1
@@ -113,8 +127,8 @@ def test_rejects_non_grass(client):
     uid = make_user(client, "impostor")
     headers = {"X-User-Id": str(uid)}
     group = client.post("/api/groups", json={"name": "g"}, headers=headers).json()
-    drop = client.post(f"/api/groups/{group['id']}/drops/trigger", headers=headers).json()
-    url = f"/api/groups/{group['id']}/drops/{drop['id']}/submissions"
+    drop = client.post("/api/drops/trigger", headers=headers).json()
+    url = f"/api/drops/{drop['id']}/submissions"
 
     r = client.post(url, headers=headers, files={"photo": ("x.jpg", not_grass(), "image/jpeg")})
     assert r.status_code == 201
@@ -128,8 +142,8 @@ def test_rejects_flat_green_screen(client):
     uid = make_user(client, "cheater")
     headers = {"X-User-Id": str(uid)}
     group = client.post("/api/groups", json={"name": "g"}, headers=headers).json()
-    drop = client.post(f"/api/groups/{group['id']}/drops/trigger", headers=headers).json()
-    url = f"/api/groups/{group['id']}/drops/{drop['id']}/submissions"
+    drop = client.post("/api/drops/trigger", headers=headers).json()
+    url = f"/api/drops/{drop['id']}/submissions"
 
     r = client.post(url, headers=headers, files={"photo": ("x.jpg", flat_green(), "image/jpeg")})
     assert r.json()["status"] == "rejected"
@@ -166,8 +180,8 @@ def test_map_patches_only_include_geolocated_grass(client):
     uid = make_user(client, "mapper")
     headers = {"X-User-Id": str(uid)}
     group = client.post("/api/groups", json={"name": "geo"}, headers=headers).json()
-    drop = client.post(f"/api/groups/{group['id']}/drops/trigger", headers=headers).json()
-    url = f"/api/groups/{group['id']}/drops/{drop['id']}/submissions"
+    drop = client.post("/api/drops/trigger", headers=headers).json()
+    url = f"/api/drops/{drop['id']}/submissions"
 
     # Trinity Bellwoods, roughly.
     r = client.post(
@@ -191,9 +205,9 @@ def test_map_skips_submissions_without_coordinates(client):
     uid = make_user(client, "nogps")
     headers = {"X-User-Id": str(uid)}
     group = client.post("/api/groups", json={"name": "nogeo"}, headers=headers).json()
-    drop = client.post(f"/api/groups/{group['id']}/drops/trigger", headers=headers).json()
+    drop = client.post("/api/drops/trigger", headers=headers).json()
     client.post(
-        f"/api/groups/{group['id']}/drops/{drop['id']}/submissions",
+        f"/api/drops/{drop['id']}/submissions",
         headers=headers,
         files={"photo": ("g.jpg", fake_grass(), "image/jpeg")},
     )
@@ -344,3 +358,133 @@ def test_map_backfills_missing_glyphs(client):
 
     patch = client.get("/api/map/patches").json()["patches"][0]
     assert patch["glyph_svg"] and patch["glyph_svg"].startswith("<svg")
+def test_plays_without_a_group(client):
+    """The headline change: drops are global, so no group is required to score."""
+    uid = make_user(client, "loner")
+    headers = {"X-User-Id": str(uid)}
+
+    drop = client.post("/api/drops/trigger", headers=headers).json()
+    assert drop["status"] == "active"
+
+    r = client.post(
+        f"/api/drops/{drop['id']}/submissions",
+        headers=headers,
+        files={"photo": ("g.jpg", fake_grass(), "image/jpeg")},
+    )
+    assert r.status_code == 201, r.text
+    assert r.json()["status"] == "verified"
+
+    board = client.get("/api/leaderboard").json()
+    assert [e["username"] for e in board] == ["loner"]
+    assert board[0]["total_score"] > 0
+
+
+def test_drop_clock_and_global_board_are_public(client):
+    make_user(client, "somebody")
+
+    r = client.get("/api/drops/current")
+    assert r.status_code == 200
+    assert r.json()["has_submitted"] is False
+
+    assert client.get("/api/leaderboard").status_code == 200
+    # Friends is the one view that needs to know who you are.
+    assert client.get("/api/leaderboard?scope=friends").status_code == 401
+
+
+def test_friends_scope_only_shows_people_you_share_a_group_with(client):
+    mine = make_user(client, "me")
+    headers = {"X-User-Id": str(mine)}
+    make_user(client, "stranger")
+
+    group = client.post("/api/groups", json={"name": "crew"}, headers=headers).json()
+    mate = make_user(client, "mate")
+    client.post(f"/api/groups/{group['id']}/members/mate", headers=headers)
+
+    names = {e["username"] for e in client.get("/api/leaderboard?scope=friends", headers=headers).json()}
+    assert names == {"me", "mate"}
+    assert "stranger" in {e["username"] for e in client.get("/api/leaderboard").json()}
+    assert mate  # created above, used via the roster call
+
+
+def test_drop_is_scheduled_inside_the_daytime_window():
+    from datetime import datetime, timedelta, timezone
+    from zoneinfo import ZoneInfo
+
+    from app.config import settings
+    from app.services.drop_scheduler import next_drop_time
+
+    tz = ZoneInfo(settings.drop_timezone)
+    # Sweep a full day of "now" values so we cover before, during and after the window.
+    base = datetime(2026, 8, 8, tzinfo=timezone.utc)
+    for hour in range(24):
+        chosen = next_drop_time(base + timedelta(hours=hour)).astimezone(tz)
+        ends = chosen + timedelta(seconds=settings.drop_window_seconds)
+        assert chosen.hour >= settings.drop_earliest_hour, chosen
+        assert ends.hour < settings.drop_latest_hour or (
+            ends.hour == settings.drop_latest_hour and ends.minute == 0
+        ), ends
+        assert chosen >= base + timedelta(hours=hour), "never schedules in the past"
+
+
+def test_elo_is_zero_sum_and_favours_the_winner():
+    from app.services.elo import BASE_RATING, Contender, rate_drop
+
+    field = [
+        Contender("winner", score=90.0, rating=BASE_RATING),
+        Contender("middle", score=50.0, rating=BASE_RATING),
+        Contender("loser", score=10.0, rating=BASE_RATING),
+    ]
+    new = rate_drop(field)
+
+    assert new["winner"] > BASE_RATING > new["loser"]
+    assert new["middle"] == BASE_RATING  # even record against equal opponents
+    # Points move between players, they are not created.
+    assert sum(new.values()) == pytest.approx(BASE_RATING * 3, abs=2)
+
+
+def test_elo_rewards_beating_a_stronger_player():
+    from app.services.elo import Contender, rate_drop
+
+    upset = rate_drop([Contender("david", 90.0, 1000), Contender("goliath", 10.0, 1600)])
+    expected_win = rate_drop([Contender("david", 90.0, 1600), Contender("goliath", 10.0, 1000)])
+
+    assert upset["david"] - 1000 > expected_win["david"] - 1600
+
+
+def test_elo_needs_an_opponent():
+    from app.services.elo import BASE_RATING, Contender, rate_drop
+
+    assert rate_drop([Contender("solo", 90.0, BASE_RATING)]) == {}
+    assert rate_drop([]) == {}
+
+
+def test_drop_close_settles_ratings(client):
+    """Two players in one drop: the better photo gains rating, the other loses it."""
+    from app.database import SessionLocal
+    from app.models import Player
+    from app.services.drop_scheduler import settle_ratings
+
+    good = make_user(client, "sharp")
+    bad = make_user(client, "blurry")
+    drop = client.post("/api/drops/trigger", headers={"X-User-Id": str(good)}).json()
+    url = f"/api/drops/{drop['id']}/submissions"
+
+    client.post(url, headers={"X-User-Id": str(good)},
+                files={"photo": ("g.jpg", fake_grass(), "image/jpeg")})
+    client.post(url, headers={"X-User-Id": str(bad)},
+                files={"photo": ("x.jpg", not_grass(), "image/jpeg")})  # rejected, scores 0
+
+    db = SessionLocal()
+    try:
+        ratings = settle_ratings(db, drop["id"])
+        db.commit()
+        assert len(ratings) == 2
+        by_name = {p.username: p.elo for p in db.query(Player).all()}
+    finally:
+        db.close()
+
+    assert by_name["sharp"] > 1200 > by_name["blurry"]
+
+    board = client.get("/api/leaderboard").json()
+    assert [e["username"] for e in board] == ["sharp", "blurry"]  # ranked by elo
+    assert board[0]["elo"] > board[1]["elo"]

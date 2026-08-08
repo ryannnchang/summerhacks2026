@@ -12,7 +12,6 @@ export interface PendingPhoto {
   file: File
   /** Object URL for preview. Revoked when the next photo replaces this one. */
   previewUrl: string
-  groupId: number
   dropId: number
   /** Set once the upload comes back, so revisiting /review can't re-submit it. */
   result: Submission | null

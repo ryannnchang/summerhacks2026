@@ -5,16 +5,14 @@ from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import func
 
 from app.api.deps import CurrentUser, DbSession, GroupMembership
-from app.models import Drop, Group, Membership, Submission, SubmissionStatus, User
+from app.models import Group, Membership, User
 from app.schemas import (
     GroupCreate,
     GroupDetail,
     GroupJoin,
     GroupOut,
-    LeaderboardEntry,
     MemberOut,
 )
-from app.services.drop_scheduler import ensure_pending_drop
 
 router = APIRouter(prefix="/groups", tags=["groups"])
 
@@ -47,7 +45,6 @@ def create_group(payload: GroupCreate, db: DbSession, user: CurrentUser) -> Grou
     db.add(group)
     db.flush()
     db.add(Membership(user_id=user.id, group_id=group.id))
-    ensure_pending_drop(db, group.id)
     db.commit()
     db.refresh(group)
     return _to_group_out(db, group)
@@ -87,7 +84,7 @@ def read_group(group_id: int, db: DbSession, membership: GroupMembership) -> Gro
         db.query(Membership, User)
         .join(User, User.id == Membership.user_id)
         .filter(Membership.group_id == group_id)
-        .order_by(Membership.total_score.desc())
+        .order_by(User.username.asc())
         .all()
     )
     base = _to_group_out(db, group)
@@ -98,8 +95,8 @@ def read_group(group_id: int, db: DbSession, membership: GroupMembership) -> Gro
                 user_id=u.id,
                 username=u.username,
                 display_name=u.display_name,
-                total_score=m.total_score,
-                streak=m.streak,
+                total_score=u.total_score,
+                streak=u.streak,
             )
             for m, u in rows
         ],
@@ -130,8 +127,8 @@ def add_member(
         user_id=user.id,
         username=user.username,
         display_name=user.display_name,
-        total_score=existing.total_score,
-        streak=existing.streak,
+        total_score=user.total_score,
+        streak=user.streak,
     )
 
 
@@ -153,33 +150,3 @@ def remove_member(
     if target:
         db.delete(target)
         db.commit()
-
-
-@router.get("/{group_id}/leaderboard", response_model=list[LeaderboardEntry])
-def leaderboard(group_id: int, db: DbSession, membership: GroupMembership) -> list[LeaderboardEntry]:
-    counts = dict(
-        db.query(Submission.user_id, func.count(Submission.id))
-        .join(Drop, Drop.id == Submission.drop_id)
-        .filter(Drop.group_id == group_id, Submission.status == SubmissionStatus.VERIFIED)
-        .group_by(Submission.user_id)
-        .all()
-    )
-    rows = (
-        db.query(Membership, User)
-        .join(User, User.id == Membership.user_id)
-        .filter(Membership.group_id == group_id)
-        .order_by(Membership.total_score.desc(), User.username.asc())
-        .all()
-    )
-    return [
-        LeaderboardEntry(
-            rank=i,
-            user_id=u.id,
-            username=u.username,
-            display_name=u.display_name,
-            total_score=round(m.total_score, 2),
-            streak=m.streak,
-            submissions=counts.get(u.id, 0),
-        )
-        for i, (m, u) in enumerate(rows, start=1)
-    ]

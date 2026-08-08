@@ -6,9 +6,9 @@ from fastapi.concurrency import run_in_threadpool
 from PIL import UnidentifiedImageError
 
 from app import storage
-from app.api.deps import CurrentUser, DbSession, GroupMembership
+from app.api.deps import CurrentUser, DbSession
 from app.config import settings
-from app.models import Drop, DropStatus, Submission, SubmissionStatus, User
+from app.models import Drop, DropStatus, Player, Submission, SubmissionStatus, User
 from app.schemas import SubmissionOut
 from app.services import glyphs
 from app.services import mural as mural_service
@@ -50,22 +50,21 @@ def _to_out(submission: Submission, username: str | None = None) -> SubmissionOu
 
 
 @router.post(
-    "/groups/{group_id}/drops/{drop_id}/submissions",
+    "/drops/{drop_id}/submissions",
     response_model=SubmissionOut,
     status_code=status.HTTP_201_CREATED,
 )
 async def submit_grass(
-    group_id: int,
     drop_id: int,
     db: DbSession,
     user: CurrentUser,
-    membership: GroupMembership,
     photo: UploadFile = File(...),
     latitude: float | None = Form(None, ge=-90, le=90),
     longitude: float | None = Form(None, ge=-180, le=180),
 ) -> SubmissionOut:
+    """Drops are global, so no group membership is required — just an account."""
     drop = db.get(Drop, drop_id)
-    if drop is None or drop.group_id != group_id:
+    if drop is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Drop not found")
     if drop.status != DropStatus.ACTIVE:
         raise HTTPException(status.HTTP_409_CONFLICT, "That drop is not open")
@@ -126,11 +125,10 @@ async def submit_grass(
     if verdict.is_grass:
         submission.status = SubmissionStatus.VERIFIED
         submission.speed_score = speed_score(elapsed, settings.drop_window_seconds)
-        submission.total_score = total_score(
-            verdict.quality, submission.speed_score, membership.streak
-        )
-        membership.total_score += submission.total_score
-        membership.streak += 1
+        # Score and streak live on the player now, not on a group membership.
+        submission.total_score = total_score(verdict.quality, submission.speed_score, user.streak)
+        user.total_score += submission.total_score
+        user.streak += 1
         db.add(submission)
         db.flush()  # assigns the id, which seeds the glyph
         submission.glyph_svg = glyphs.for_submission(submission)
@@ -138,33 +136,39 @@ async def submit_grass(
     else:
         submission.status = SubmissionStatus.REJECTED
         submission.reject_reason = verdict.reason
-        membership.streak = 0
+        user.streak = 0
         db.add(submission)
+
+    # Mirror onto the leaderboard row in the same transaction, so the two can't
+    # drift. Elo is settled separately when the drop closes and the field is known.
+    if user.supabase_uid:
+        player = db.get(Player, user.supabase_uid)
+        if player is not None:
+            player.total_score = user.total_score
+            player.streak = user.streak
+            player.updated_at = now
 
     db.commit()
     db.refresh(submission)
 
     if submission.status == SubmissionStatus.VERIFIED:
         await manager.broadcast(
-            group_id,
             {
                 "type": "submission.created",
                 "submission_id": submission.id,
                 "username": user.username,
                 "total_score": submission.total_score,
                 "thumbnail_url": storage.public_url(submission.thumbnail_path),
-            },
+            }
         )
 
     return _to_out(submission, user.username)
 
 
-@router.get("/groups/{group_id}/drops/{drop_id}/submissions", response_model=list[SubmissionOut])
-def list_drop_submissions(
-    group_id: int, drop_id: int, db: DbSession, membership: GroupMembership
-) -> list[SubmissionOut]:
-    drop = db.get(Drop, drop_id)
-    if drop is None or drop.group_id != group_id:
+@router.get("/drops/{drop_id}/submissions", response_model=list[SubmissionOut])
+def list_drop_submissions(drop_id: int, db: DbSession) -> list[SubmissionOut]:
+    """Public — the feed for a drop is part of watching the game."""
+    if db.get(Drop, drop_id) is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Drop not found")
     rows = (
         db.query(Submission, User)

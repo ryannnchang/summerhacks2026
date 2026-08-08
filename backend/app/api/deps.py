@@ -28,6 +28,23 @@ def current_user(
 CurrentUser = Annotated[User, Depends(current_user)]
 
 
+def optional_user(
+    db: DbSession,
+    x_user_id: Annotated[int | None, Header(alias="X-User-Id")] = None,
+) -> User | None:
+    """Same as `current_user`, but signed-out callers get None instead of a 401.
+
+    The drop clock and the global leaderboard are public — you can watch without
+    an account, you just can't submit.
+    """
+    if x_user_id is None:
+        return None
+    return db.get(User, x_user_id)
+
+
+OptionalUser = Annotated[User | None, Depends(optional_user)]
+
+
 def group_membership(
     db: DbSession,
     user: CurrentUser,
