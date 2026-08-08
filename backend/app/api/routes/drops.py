@@ -87,6 +87,37 @@ async def trigger_drop(db: DbSession, user: CurrentUser) -> DropOut:
     return _to_drop_out(db, drop, user.id)
 
 
+@router.post("/drops/reset", response_model=DropOut)
+async def reset_drop(db: DbSession, user: CurrentUser) -> DropOut:
+    """Close the live drop and fire a fresh one immediately. Demo tool.
+
+    A new drop id resets the one-submission-per-person rule, so everyone can
+    shoot again right away. Elo is settled per submission, so closing early
+    loses nothing.
+    """
+    closed_ids = []
+    for live in db.query(Drop).filter(Drop.status == DropStatus.ACTIVE).all():
+        live.status = DropStatus.CLOSED
+        closed_ids.append(live.id)
+
+    drop = ensure_pending_drop(db)
+    activate_drop(db, drop)
+    db.commit()
+    db.refresh(drop)
+
+    for drop_id in closed_ids:
+        await manager.broadcast({"type": "drop.closed", "drop_id": drop_id})
+    await manager.broadcast(
+        {
+            "type": "drop.started",
+            "drop_id": drop.id,
+            "expires_at": as_utc(drop.expires_at).isoformat(),
+            "triggered_by": user.username,
+        }
+    )
+    return _to_drop_out(db, drop, user.id)
+
+
 @router.websocket("/ws/drops")
 async def drop_socket(websocket: WebSocket) -> None:
     """Live feed: drop.started, drop.closed, submission.created. One global room."""

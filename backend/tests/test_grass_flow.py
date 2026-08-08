@@ -123,6 +123,37 @@ def test_full_grass_loop(client):
     assert mural["tiles"][0]["x"] == 0 and mural["tiles"][0]["y"] == 0
 
 
+def test_reset_closes_live_drop_and_reopens_submissions(client):
+    uid = make_user(client, "demoer")
+    headers = {"X-User-Id": str(uid)}
+
+    first = client.post("/api/drops/trigger", headers=headers).json()
+    url = f"/api/drops/{first['id']}/submissions"
+    r = client.post(url, headers=headers, files={"photo": ("g.jpg", fake_grass(), "image/jpeg")})
+    assert r.status_code == 201, r.text
+
+    # Locked out of the live drop — this is what reset exists to undo.
+    r = client.post(url, headers=headers, files={"photo": ("g.jpg", fake_grass(), "image/jpeg")})
+    assert r.status_code == 409
+
+    r = client.post("/api/drops/reset", headers=headers)
+    assert r.status_code == 200, r.text
+    fresh = r.json()
+    assert fresh["status"] == "active"
+    assert fresh["id"] != first["id"]
+    assert fresh["has_submitted"] is False
+
+    # Old drop is closed, and the same person can submit again on the new one.
+    drops = {d["id"]: d for d in client.get("/api/drops", headers=headers).json()}
+    assert drops[first["id"]]["status"] == "closed"
+    r = client.post(
+        f"/api/drops/{fresh['id']}/submissions",
+        headers=headers,
+        files={"photo": ("g.jpg", fake_grass(), "image/jpeg")},
+    )
+    assert r.status_code == 201, r.text
+
+
 def test_rejects_non_grass(client):
     uid = make_user(client, "impostor")
     headers = {"X-User-Id": str(uid)}
