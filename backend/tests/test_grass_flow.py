@@ -424,64 +424,44 @@ def test_drop_is_scheduled_inside_the_daytime_window():
         assert chosen >= base + timedelta(hours=hour), "never schedules in the past"
 
 
-def test_elo_is_zero_sum_and_favours_the_winner():
-    from app.services.elo import BASE_RATING, Contender, rate_drop
+def test_elo_rises_above_par_and_falls_below():
+    from app.services.elo import BASE_RATING, K_FACTOR, PAR_SCORE, adjust
 
-    field = [
-        Contender("winner", score=90.0, rating=BASE_RATING),
-        Contender("middle", score=50.0, rating=BASE_RATING),
-        Contender("loser", score=10.0, rating=BASE_RATING),
-    ]
-    new = rate_drop(field)
-
-    assert new["winner"] > BASE_RATING > new["loser"]
-    assert new["middle"] == BASE_RATING  # even record against equal opponents
-    # Points move between players, they are not created.
-    assert sum(new.values()) == pytest.approx(BASE_RATING * 3, abs=2)
+    assert adjust(BASE_RATING, PAR_SCORE) == BASE_RATING  # par changes nothing
+    assert adjust(BASE_RATING, 100.0) == BASE_RATING + K_FACTOR
+    assert adjust(BASE_RATING, 0.0) == BASE_RATING - K_FACTOR
+    # Streak multiplier can push total_score past 100; the gain still caps at +K.
+    assert adjust(BASE_RATING, 140.0) == BASE_RATING + K_FACTOR
+    # Monotone around par.
+    assert adjust(BASE_RATING, 75.0) > BASE_RATING > adjust(BASE_RATING, 25.0)
 
 
-def test_elo_rewards_beating_a_stronger_player():
-    from app.services.elo import Contender, rate_drop
-
-    upset = rate_drop([Contender("david", 90.0, 1000), Contender("goliath", 10.0, 1600)])
-    expected_win = rate_drop([Contender("david", 90.0, 1600), Contender("goliath", 10.0, 1000)])
-
-    assert upset["david"] - 1000 > expected_win["david"] - 1600
-
-
-def test_elo_needs_an_opponent():
-    from app.services.elo import BASE_RATING, Contender, rate_drop
-
-    assert rate_drop([Contender("solo", 90.0, BASE_RATING)]) == {}
-    assert rate_drop([]) == {}
-
-
-def test_drop_close_settles_ratings(client):
-    """Two players in one drop: the better photo gains rating, the other loses it."""
+def test_elo_settles_per_submission(client):
+    """A good photo gains rating on the spot; a rejected one loses it."""
     from app.database import SessionLocal
     from app.models import Player
-    from app.services.drop_scheduler import settle_ratings
 
     good = make_user(client, "sharp")
     bad = make_user(client, "blurry")
     drop = client.post("/api/drops/trigger", headers={"X-User-Id": str(good)}).json()
     url = f"/api/drops/{drop['id']}/submissions"
 
-    client.post(url, headers={"X-User-Id": str(good)},
-                files={"photo": ("g.jpg", fake_grass(), "image/jpeg")})
-    client.post(url, headers={"X-User-Id": str(bad)},
-                files={"photo": ("x.jpg", not_grass(), "image/jpeg")})  # rejected, scores 0
+    win = client.post(url, headers={"X-User-Id": str(good)},
+                      files={"photo": ("g.jpg", fake_grass(), "image/jpeg")}).json()
+    loss = client.post(url, headers={"X-User-Id": str(bad)},
+                       files={"photo": ("x.jpg", not_grass(), "image/jpeg")}).json()
+
+    # The upload response carries the rating change the player just earned.
+    assert win["elo_delta"] > 0 > loss["elo_delta"]  # rejected scores 0 -> below par
 
     db = SessionLocal()
     try:
-        ratings = settle_ratings(db, drop["id"])
-        db.commit()
-        assert len(ratings) == 2
         by_name = {p.username: p.elo for p in db.query(Player).all()}
     finally:
         db.close()
 
-    assert by_name["sharp"] > 1200 > by_name["blurry"]
+    assert by_name["sharp"] == 1200 + win["elo_delta"]
+    assert by_name["blurry"] == 1200 + loss["elo_delta"]
 
     board = client.get("/api/leaderboard").json()
     assert [e["username"] for e in board] == ["sharp", "blurry"]  # ranked by elo

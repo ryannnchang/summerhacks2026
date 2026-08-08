@@ -51,6 +51,16 @@ export function ResultCard({ submission, previewUrl }: Props) {
           <p className="font-mono text-5xl font-bold text-scoreboard tabular-nums">
             {submission.total_score.toFixed(0)}
           </p>
+          {submission.elo_delta != null && submission.elo_delta !== 0 && (
+            <p
+              className={`font-mono text-sm font-bold tabular-nums ${
+                submission.elo_delta > 0 ? 'text-turf-400' : 'text-dirt-light'
+              }`}
+            >
+              {submission.elo_delta > 0 ? '+' : ''}
+              {submission.elo_delta} ELO
+            </p>
+          )}
           <p className="text-chalk/70 text-sm max-w-xs">
             {verified
               ? 'Real grass, real sunlight. Points awarded.'

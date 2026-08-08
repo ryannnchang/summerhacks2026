@@ -95,6 +95,10 @@ class SubmissionOut(ORMModel):
     verdict_source: str | None = None
     glyph_svg: str | None = None
 
+    # Rating change from this submission. Only set on the upload response for a
+    # Supabase-linked account; null on listings, where it isn't tracked.
+    elo_delta: int | None = None
+
 
 class LeaderboardEntry(BaseModel):
     rank: int

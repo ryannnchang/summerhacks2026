@@ -62,6 +62,8 @@ export interface Submission {
   verdict_source: 'gemini' | 'heuristic' | null
   /** Server-generated procedural SVG; null only on rejected submissions. */
   glyph_svg: string | null
+  /** Rating change from this submission; only set on the upload response. */
+  elo_delta: number | null
 }
 
 export interface LeaderboardEntry {

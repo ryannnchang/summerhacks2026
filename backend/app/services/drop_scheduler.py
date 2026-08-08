@@ -16,8 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import SessionLocal
-from app.models import Drop, DropStatus, Player, Submission, User
-from app.services.elo import BASE_RATING, Contender, rate_drop
+from app.models import Drop, DropStatus
 from app.services.events import manager
 
 logger = logging.getLogger(__name__)
@@ -87,45 +86,6 @@ def activate_drop(db: Session, drop: Drop) -> None:
     drop.expires_at = now + timedelta(seconds=settings.drop_window_seconds)
 
 
-def settle_ratings(db: Session, drop_id: int) -> dict[str, int]:
-    """Recomputes elo for everyone who entered `drop_id`, and writes it to players.
-
-    Only players linked to a Supabase account can be rated, since `players` is
-    keyed by that uuid — an unlinked user still scores points, just no rating.
-    """
-    rows = (
-        db.query(Submission, User)
-        .join(User, User.id == Submission.user_id)
-        .filter(Submission.drop_id == drop_id, User.supabase_uid.isnot(None))
-        .all()
-    )
-    if len(rows) < 2:
-        return {}
-
-    players = {
-        p.id: p
-        for p in db.query(Player).filter(Player.id.in_([u.supabase_uid for _, u in rows])).all()
-    }
-
-    contenders = [
-        Contender(
-            key=user.supabase_uid,
-            # A rejected photo scored nothing, so it loses to every verified one.
-            score=submission.total_score,
-            rating=players[user.supabase_uid].elo
-            if user.supabase_uid in players
-            else BASE_RATING,
-        )
-        for submission, user in rows
-        if user.supabase_uid in players
-    ]
-
-    ratings = rate_drop(contenders)
-    for uid, rating in ratings.items():
-        players[uid].elo = rating
-    return ratings
-
-
 async def _process_due_drops(db: Session) -> list[dict]:
     """Flips due drops and returns the payloads to broadcast."""
     now = _utcnow()
@@ -149,9 +109,8 @@ async def _process_due_drops(db: Session) -> list[dict]:
         expires_at = as_utc(drop.expires_at)
         if expires_at and expires_at <= now:
             drop.status = DropStatus.CLOSED
-            # Ratings can only be settled once the field is final, so this happens
-            # at close rather than per submission.
-            settle_ratings(db, drop.id)
+            # Elo already settled per submission (services/elo.py), so closing
+            # a drop is just the status flip and the broadcast.
             messages.append({"type": "drop.closed", "drop_id": drop.id})
 
     ensure_pending_drop(db)

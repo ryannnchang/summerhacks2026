@@ -10,7 +10,7 @@ from app.api.deps import CurrentUser, DbSession
 from app.config import settings
 from app.models import Drop, DropStatus, Player, Submission, SubmissionStatus, User
 from app.schemas import SubmissionOut
-from app.services import glyphs
+from app.services import elo, glyphs
 from app.services import mural as mural_service
 from app.services.drop_scheduler import as_utc
 from app.services.events import manager
@@ -22,7 +22,9 @@ router = APIRouter(tags=["submissions"])
 ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp", "image/heic"}
 
 
-def _to_out(submission: Submission, username: str | None = None) -> SubmissionOut:
+def _to_out(
+    submission: Submission, username: str | None = None, elo_delta: int | None = None
+) -> SubmissionOut:
     extras: dict = json.loads(submission.features_json) if submission.features_json else {}
     return SubmissionOut(
         id=submission.id,
@@ -46,6 +48,7 @@ def _to_out(submission: Submission, username: str | None = None) -> SubmissionOu
         features=extras.get("features"),
         verdict_source=submission.verdict_source,
         glyph_svg=submission.glyph_svg,
+        elo_delta=elo_delta,
     )
 
 
@@ -93,7 +96,8 @@ async def submit_grass(
     except UnidentifiedImageError:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "That file is not a readable image")
 
-    image_path, thumb_path = storage.save_image(image)
+    # Also threadpooled: with Supabase Storage configured this is two HTTP uploads.
+    image_path, thumb_path = await run_in_threadpool(storage.save_image, image)
 
     started_at = as_utc(drop.started_at) or as_utc(drop.scheduled_for)
     now = datetime.now(timezone.utc)
@@ -140,12 +144,19 @@ async def submit_grass(
         db.add(submission)
 
     # Mirror onto the leaderboard row in the same transaction, so the two can't
-    # drift. Elo is settled separately when the drop closes and the field is known.
+    # drift. Elo settles here too: above par gains rating, below par (including
+    # a rejection, which scores 0) loses it — so the board is already current
+    # when the player sees their result.
+    elo_delta: int | None = None
     if user.supabase_uid:
         player = db.get(Player, user.supabase_uid)
         if player is not None:
             player.total_score = user.total_score
             player.streak = user.streak
+            # A rejected submission never set total_score; it counts as 0.
+            new_rating = elo.adjust(player.elo, submission.total_score or 0.0)
+            elo_delta = new_rating - player.elo
+            player.elo = new_rating
             player.updated_at = now
 
     db.commit()
@@ -162,7 +173,7 @@ async def submit_grass(
             }
         )
 
-    return _to_out(submission, user.username)
+    return _to_out(submission, user.username, elo_delta)
 
 
 @router.get("/drops/{drop_id}/submissions", response_model=list[SubmissionOut])
