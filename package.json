@@ -1,0 +1,12 @@
+{
+  "name": "touch-grass",
+  "private": true,
+  "description": "Root task runner. The real code lives in backend/ (Python) and frontend/ (React).",
+  "scripts": {
+    "start": "./dev.sh",
+    "dev": "./dev.sh",
+    "build": "npm run build --prefix frontend",
+    "test": "cd backend && .venv/bin/python -m pytest tests -q",
+    "typecheck": "npm run typecheck --prefix frontend"
+  }
+}
