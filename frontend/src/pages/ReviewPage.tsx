@@ -1,40 +1,35 @@
-import { useEffect, useRef, useState } from 'react'
-import { Navigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Navigate, useNavigate } from 'react-router-dom'
 
 import { api } from '../api/client'
 import { ResultCard } from '../components/ResultCard'
 import { currentCoords } from '../lib/geo'
-import { getPendingPhoto, recordPendingResult } from '../lib/pendingPhoto'
+import { getPendingPhoto, uploadPendingOnce } from '../lib/pendingPhoto'
 import type { Submission } from '../types'
 
 export function ReviewPage() {
   const pending = getPendingPhoto()
+  const navigate = useNavigate()
 
   const [result, setResult] = useState<Submission | null>(pending?.result ?? null)
   const [error, setError] = useState<string | null>(null)
-  const submitted = useRef(false)
 
   useEffect(() => {
-    if (!pending || pending.result || submitted.current) return
-    submitted.current = true
+    if (!pending || pending.result) return
 
+    // The upload itself is started at most once (module-level promise), so
+    // StrictMode's double mount just subscribes twice — whichever mount is
+    // still alive when it settles renders the verdict.
     let cancelled = false
-    async function upload() {
-      if (!pending) return
-      try {
-        const submission = await api.submitGrass(
-          pending.dropId,
-          pending.file,
-          await currentCoords(),
-        )
-        recordPendingResult(submission)
+    uploadPendingOnce(async () =>
+      api.submitGrass(pending.dropId, pending.file, await currentCoords()),
+    )
+      .then((submission) => {
         if (!cancelled) setResult(submission)
-      } catch (err) {
+      })
+      .catch((err: unknown) => {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Upload failed')
-      }
-    }
-
-    void upload()
+      })
     return () => {
       cancelled = true
     }
@@ -72,9 +67,20 @@ export function ReviewPage() {
         {result && <ResultCard submission={result} previewUrl={pending.previewUrl} />}
 
         {error && (
-          <p className="text-dirt-light text-sm chalk-border rounded-xl p-4 text-center" role="alert">
-            {error}
-          </p>
+          <div className="flex flex-col gap-3">
+            <p
+              className="text-dirt-light text-sm chalk-border rounded-xl p-4 text-center"
+              role="alert"
+            >
+              {error}
+            </p>
+            <button
+              onClick={() => navigate('/')}
+              className="w-full border border-chalk/20 text-chalk/70 hover:text-chalk font-display text-xl tracking-wide py-3 rounded-xl transition-colors"
+            >
+              BACK TO RANKINGS
+            </button>
+          </div>
         )}
       </div>
     </main>

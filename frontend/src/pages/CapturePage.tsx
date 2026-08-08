@@ -13,6 +13,8 @@ export function CapturePage() {
   const [drop, setDrop] = useState<Drop | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  // A snapped-but-not-yet-submitted photo; the confirm screen shows while set.
+  const [shot, setShot] = useState<{ file: File; previewUrl: string } | null>(null)
 
   const remaining = useCountdown(drop?.status === 'active' ? drop.expires_at : null)
 
@@ -25,8 +27,18 @@ export function CapturePage() {
   }, [])
 
   function handleCapture(file: File) {
-    if (!drop) return
-    setPendingPhoto({ file, previewUrl: URL.createObjectURL(file), dropId: drop.id })
+    setShot({ file, previewUrl: URL.createObjectURL(file) })
+  }
+
+  function handleRetake() {
+    if (shot) URL.revokeObjectURL(shot.previewUrl)
+    setShot(null)
+  }
+
+  function handleSubmit() {
+    if (!drop || !shot) return
+    // The preview URL's lifetime transfers to pendingPhoto, which revokes it.
+    setPendingPhoto({ file: shot.file, previewUrl: shot.previewUrl, dropId: drop.id })
     navigate('/review')
   }
 
@@ -48,14 +60,44 @@ export function CapturePage() {
       {open ? (
         <>
           <p className="text-chalk/60 text-sm text-center mb-1 max-w-xs mx-auto">
-            Frame some actual grass, dirt, or greenery. Our verifier is picky.
+            {shot
+              ? 'Happy with it? The verifier only gets one look.'
+              : 'Frame some actual grass, dirt, or greenery. Our verifier is picky.'}
           </p>
           <p className="font-mono text-scoreboard text-sm text-center mb-5 tabular-nums">
             {remaining === null ? '' : `${formatDuration(remaining)} left`}
           </p>
 
           <div className="flex-1 flex items-start justify-center">
-            <CameraCapture onCapture={handleCapture} />
+            {shot ? (
+              <div className="flex flex-col items-center gap-4 w-full">
+                <div className="relative w-full aspect-[3/4] rounded-2xl overflow-hidden chalk-border-solid bg-turf-800">
+                  <img
+                    src={shot.previewUrl}
+                    alt="Your photo, ready to submit"
+                    className="w-full h-full object-cover"
+                  />
+                  <div className="pointer-events-none absolute inset-4 border-2 border-scoreboard/40 rounded-xl" />
+                </div>
+
+                <div className="flex flex-col w-full gap-2.5">
+                  <button
+                    onClick={handleSubmit}
+                    className="w-full bg-scoreboard hover:bg-scoreboard-dim text-turf-900 font-display text-2xl tracking-wide py-3 rounded-xl transition-colors"
+                  >
+                    SUBMIT PHOTO
+                  </button>
+                  <button
+                    onClick={handleRetake}
+                    className="w-full text-chalk/70 text-sm py-2 border border-chalk/20 rounded-xl hover:text-chalk hover:border-chalk/40 transition-colors"
+                  >
+                    Retake
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <CameraCapture onCapture={handleCapture} />
+            )}
           </div>
         </>
       ) : (
