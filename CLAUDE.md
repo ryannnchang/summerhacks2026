@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **Touch Grass** (browser title: "Competitive Grass") — a group accountability game. At a random
 moment a **drop** fires for a group, members get 15 minutes to photograph real grass, the photo is
 CV-verified and scored on quality × speed, and verified photos land on both a shared global mural
-and a public Leaflet map.
+and a public Mapbox map.
 
 Two processes: FastAPI + SQLite on `:8000`, React + TypeScript + Vite on `:5173`.
 
@@ -135,9 +135,10 @@ drawn from the judge's signals — lushness sets blade count/height, biodiversit
 palette colors the blades, and feature tags grow clover/flowers/moss. Deterministic: seeded by
 submission id, so the same row always draws the same tuft. Generated at submit time (after
 `db.flush()` assigns the id), stored in `Submission.glyph_svg`, and lazily backfilled by the map
-route for rows that predate glyphs. The frontend renders it as the Leaflet `divIcon` marker
-(sized by quality score) with a CSS `drop-shadow` glow, so overlapping markers merge into glowing
-green regions when zoomed out. Nothing user-controlled enters the SVG — palette hexes are
+route for rows that predate glyphs. The frontend injects it into a Mapbox DOM marker (sized by
+quality score) with a CSS `drop-shadow` glow, so overlapping markers merge into glowing green
+regions when zoomed out, and clustered markers plant up to six tufts along one baseline so a
+cluster reads as a denser patch rather than a stack of pins. Nothing user-controlled enters the SVG — palette hexes are
 regex-validated upstream and feature tags are matched, never embedded.
 
 ### Auth
@@ -164,7 +165,9 @@ so Vite doesn't walk up and find an unrelated config in a parent directory. Addi
 `postcss.config.js` will not take effect.
 
 [styles/index.css](frontend/src/styles/index.css) holds the Tailwind directives plus a few custom
-utilities that don't express well as classes (`chalk-border`, `flip-digit`, `grass-pin`).
+utilities that don't express well as classes (`chalk-border`, `flip-digit`, `grass-glyph`), plus
+the map's marker styles (`patch-marker*`, `patch-cluster*`, `pin-popup`) and the overrides that
+re-skin Mapbox's own chrome (`.mapboxgl-*`).
 
 ### Routing and session
 
@@ -198,15 +201,38 @@ calling `fetch` from components.
 
 ### Map component
 
-[GrassMap.tsx](frontend/src/components/GrassMap.tsx) wraps Leaflet imperatively (refs + effects, no
-React binding library). Pins are `divIcon`s on purpose — Leaflet's default marker resolves
-`marker-icon.png` to a 404 under bundlers and renders invisible. Popup content is built as an HTML
-string, so anything user-supplied goes through the local `escapeAttr()`.
+[GrassMap.tsx](frontend/src/components/GrassMap.tsx) wraps **Mapbox GL** imperatively (refs +
+effects, no React binding library). It needs `VITE_MAPBOX_TOKEN` in the root `.env` — without it
+the map renders blank and logs one error. The `center` prop stays in Leaflet's `[lat, lng]` order
+so callers didn't have to change; every Mapbox call flips it.
+
+Four constraints drive the shape of the file:
+
+- **Pins are DOM markers, not a symbol layer.** A tuft with a coloured ring, a score chip and a
+  hover state is far cheaper in CSS than in a paint spec.
+- **Clustering still needs a real GeoJSON source** (supercluster lives there), so the source
+  carries the points, an invisible 1px-radius circle layer (`patches-probe`) forces its tiles to
+  load — `querySourceFeatures` only sees loaded tiles — and markers are reconciled against
+  whatever that source reports on each `render`. Markers are keyed (`p<id>` / `c<cluster_id>`) and
+  reused; rebuilding them per frame restarts the CSS pop and flickers the pins.
+- **Mapbox positions a marker by writing `transform` onto the root element.** Any CSS animation or
+  hover rule touching `transform` outranks that inline style and strands every pin at the map's
+  top-left corner, so everything that moves lives on an inner `__inner` wrapper.
+- **`clusterMinPoints` is 2, not the default 4.** A group photographs the same lawn, so real
+  submissions land metres apart — an unclustered pair renders as one pin with the other hidden
+  underneath.
+
+Popups are gone: `onSelect` hands the patch up to [MapPage.tsx](frontend/src/pages/MapPage.tsx),
+which renders the detail card as React. Nothing builds marker HTML from user-supplied strings —
+`glyph_svg` is server-generated — so there is no longer an `escapeAttr()` to route things through.
 
 ## Configuration
 
-All tunables are in [backend/app/config.py](backend/app/config.py), overridable via `backend/.env`
-(copy `.env.example`). For demos, tighten `DROP_MIN_GAP_SECONDS` / `DROP_MAX_GAP_SECONDS` — or use
+All tunables are in [backend/app/config.py](backend/app/config.py). Env lives in the **repo-root
+`.env`** (copy [.env.example](.env.example)) — one file configures both halves: Vite reads that
+directory via `envDir: '..'`, and `config.py` loads `backend/.env` then the root one, root winning.
+Only `VITE_`-prefixed vars reach the browser bundle, so `VITE_MAPBOX_TOKEN` and the Supabase anon
+key go there and nothing else does. For demos, tighten `DROP_MIN_GAP_SECONDS` / `DROP_MAX_GAP_SECONDS` — or use
 the trigger button, which hits `POST /groups/{id}/drops/trigger`. Map default center is downtown
 Toronto (`MAP_CENTER_LAT` / `MAP_CENTER_LNG` / `MAP_ZOOM`).
 
