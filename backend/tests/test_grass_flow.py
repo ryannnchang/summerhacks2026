@@ -605,3 +605,117 @@ def test_rejection_earns_consolation_points_and_a_dead_glyph(client):
     # But it never reaches the shared surfaces.
     assert client.get("/api/mural").json()["tile_count"] == 0
     assert client.get("/api/map/patches").json()["patch_count"] == 0
+
+
+def test_composition_weights_quality_by_kind():
+    from app.services.gemini_judge import GeminiVerdict
+    from app.services.grass_verifier import merge_gemini
+
+    def verdict(**kw):
+        base = dict(
+            authentic=True, is_grass=True, coverage=80, lushness=70, biodiversity=60
+        )
+        return GeminiVerdict(**{**base, **kw})
+
+    # All grass: the blend collapses to lushness, so the score is unchanged from
+    # before composition existed. This is the no-regression guard.
+    plain = merge_gemini(_base_result(), verdict())
+    assert plain.quality == round(0.45 * 70 + 0.35 * 60 + 0.20 * 80, 2)
+    assert (plain.grass_fraction, plain.tree_fraction) == (1.0, 0.0)
+
+    # A frame that is mostly canopy is scored mostly on its canopy.
+    good = merge_gemini(
+        _base_result(), verdict(grass_percent=15, tree_percent=85, tree_quality=95)
+    )
+    bad = merge_gemini(
+        _base_result(), verdict(grass_percent=15, tree_percent=85, tree_quality=5)
+    )
+    assert good.quality > plain.quality > bad.quality
+    assert good.tree_fraction == 0.85 and good.tree_quality == 95.0
+
+    # Percentages that don't add up are renormalized rather than trusted...
+    skewed = merge_gemini(
+        _base_result(), verdict(grass_percent=50, tree_percent=50, flower_percent=30)
+    )
+    total = skewed.grass_fraction + skewed.tree_fraction + skewed.flower_fraction
+    assert abs(total - 1.0) < 0.001
+    # ...and a refusal to split the frame falls back to all grass.
+    allzero = merge_gemini(
+        _base_result(), verdict(grass_percent=0, tree_percent=0, flower_percent=0)
+    )
+    assert allzero.grass_fraction == 1.0
+
+
+def test_glyph_draws_what_the_frame_was_made_of():
+    from app.services.glyphs import TRUNK_BROWN, make_glyph
+
+    args = dict(seed=11, palette=["#2d5a27", "#4a7c3c"], features=[], lushness=70,
+                biodiversity=40)
+
+    lawn = make_glyph(**args)
+    forest = make_glyph(grass_fraction=0.0, tree_fraction=1.0, tree_quality=80, **args)
+
+    # Trunks appear only where the judge saw trees.
+    assert TRUNK_BROWN[:5] not in lawn
+    assert "<path" in forest
+    # A frame with no grass grows no blades; the tuft is all canopy. Blades are
+    # the only <path> the lawn draws, so counting them separates the two.
+    assert forest.count("<circle") > lawn.count("<circle")
+
+    # A sliver of lawn under a canopy still shows some grass.
+    mixed = make_glyph(grass_fraction=0.15, tree_fraction=0.85, tree_quality=80, **args)
+    assert mixed.count("<path") > forest.count("<path")
+
+
+def test_tree_quality_changes_the_canopy():
+    from app.services.glyphs import make_glyph
+
+    args = dict(seed=5, palette=["#2d5a27", "#4a7c3c"], features=[], lushness=70,
+                biodiversity=40, grass_fraction=0.2, tree_fraction=0.8)
+
+    healthy = make_glyph(tree_quality=95, **args)
+    dead = make_glyph(tree_quality=2, **args)
+
+    # A healthy canopy is drawn from filled blobs; a dead one loses them
+    # entirely and becomes bare branches, which reads as dead at marker size.
+    assert healthy.count("<circle") > 0
+    assert dead.count("<circle") == 0
+    # The canopy is the only thing that dies. Each kind wilts on its own signal,
+    # so the lawn underneath keeps its green in both — a lush verge under a dead
+    # tree has to draw as exactly that.
+    assert "#2d5a27" in healthy and "#2d5a27" in dead
+
+
+def test_flower_quality_changes_the_bloom():
+    from app.services.glyphs import make_glyph
+
+    args = dict(seed=9, palette=["#2d5a27"], features=["daisy"], lushness=60,
+                biodiversity=50, grass_fraction=0.4, flower_fraction=0.6)
+
+    vivid = make_glyph(flower_quality=95, **args)
+    wilting = make_glyph(flower_quality=3, **args)
+
+    # Same number of blooms, but a wilting one fades off its vivid yellow.
+    assert vivid.count("<circle") == wilting.count("<circle")
+    assert "#f2c94c" in vivid
+    assert "#f2c94c" not in wilting
+
+
+def test_composition_survives_the_round_trip(client):
+    """A stored composition reaches the map, and old rows read as all grass."""
+    uid = make_user(client, "botanist")
+    headers = {"X-User-Id": str(uid)}
+    drop = client.post("/api/drops/trigger", headers=headers).json()
+    client.post(
+        f"/api/drops/{drop['id']}/submissions",
+        headers=headers,
+        files={"photo": ("x.jpg", fake_grass(), "image/jpeg")},
+        data={"latitude": "43.65", "longitude": "-79.38"},
+    )
+
+    patch = client.get("/api/map/patches").json()["patches"][0]
+    # The heuristic judged (no key in tests), so it has no composition to report
+    # and the map must still hand the frontend a usable all-grass default.
+    assert patch["grass_fraction"] == 1.0
+    assert patch["tree_fraction"] == 0.0
+    assert patch["flower_fraction"] == 0.0

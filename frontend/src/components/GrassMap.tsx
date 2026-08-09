@@ -90,8 +90,16 @@ export function GrassMap({ center, zoom, patches, focus, onSelect }: Props) {
         clusterRadius: CLUSTER_RADIUS,
         clusterMaxZoom: 17,
         clusterMinPoints: CLUSTER_MIN_POINTS,
-        // Summed here so a cluster's ring can show the average without fetching its leaves.
-        clusterProperties: { sumQuality: ['+', ['get', 'quality']] },
+        // Summed during clustering so a cluster knows its own average without
+        // fetching a single leaf. The composition sums are what let the clump
+        // show the true grass/tree/flower mix of *every* member, not just the
+        // handful of tufts there is room to draw.
+        clusterProperties: {
+          sumQuality: ['+', ['get', 'quality']],
+          sumGrass: ['+', ['get', 'grass']],
+          sumTree: ['+', ['get', 'tree']],
+          sumFlower: ['+', ['get', 'flower']],
+        },
       })
 
       // querySourceFeatures only sees tiles that something has caused to load, so the source
@@ -148,7 +156,13 @@ export function GrassMap({ center, zoom, patches, focus, onSelect }: Props) {
       features: patches.map((p) => ({
         type: 'Feature' as const,
         geometry: { type: 'Point' as const, coordinates: [p.longitude, p.latitude] },
-        properties: { id: p.submission_id, quality: p.quality_score },
+        properties: {
+          id: p.submission_id,
+          quality: p.quality_score,
+          grass: p.grass_fraction,
+          tree: p.tree_fraction,
+          flower: p.flower_fraction,
+        },
       })),
     })
   }, [patches, ready])
@@ -242,16 +256,31 @@ export function GrassMap({ center, zoom, patches, focus, onSelect }: Props) {
     badge.textContent = String(count)
     inner.appendChild(badge)
 
+    // The mix every member contributes to, averaged. Exact across the whole
+    // cluster, because supercluster accumulated it during clustering.
+    const mix = {
+      grass: (props.sumGrass as number) / count,
+      tree: (props.sumTree as number) / count,
+      flower: (props.sumFlower as number) / count,
+    }
+
     // Leaves are only available asynchronously; the clump renders empty and fills in.
     // Up to six tufts are planted along one baseline, overlapping, so a cluster
     // reads as a denser patch of the same grass rather than a stack of photos.
+    //
+    // A pool far larger than the six drawn is fetched on purpose: taking the
+    // first six leaves would let a cluster of mostly-forest photos draw six
+    // lawns simply because those happened to sort first.
     const MAX_TUFTS = 6
-    source.getClusterLeaves(props.cluster_id as number, MAX_TUFTS, 0, (err, leaves) => {
+    const LEAF_POOL = 60
+    source.getClusterLeaves(props.cluster_id as number, LEAF_POOL, 0, (err, leaves) => {
       if (err || !leaves) return
-      const patches = leaves
+      const pool = leaves
         .map((leaf) => byId.current.get(leaf.properties?.id as number))
         .filter((p): p is MapPatch => Boolean(p?.glyph_svg))
-      if (patches.length === 0) return
+      if (pool.length === 0) return
+
+      const patches = representative(pool, mix, MAX_TUFTS)
 
       // Tallest in the middle, shorter ones to the outside — a natural clump
       // silhouette instead of a random skyline.
@@ -362,6 +391,58 @@ export function GrassMap({ center, zoom, patches, focus, onSelect }: Props) {
       aria-label="Map of grass patches"
     />
   )
+}
+
+interface Mix {
+  grass: number
+  tree: number
+  flower: number
+}
+
+/**
+ * Picks the `count` patches whose combined composition best matches `target`.
+ *
+ * A cluster knows its exact mix but only has room to draw six tufts, so the six
+ * have to be chosen rather than taken. Greedy: repeatedly add whichever patch
+ * pulls the running average closest to the target. That reproduces the mix even
+ * when no single member resembles it — a half-forest, half-lawn neighbourhood
+ * draws three of each, rather than six of whatever supercluster listed first.
+ *
+ * O(pool × count), so ~360 comparisons for a 60-leaf pool. Cheaper than the
+ * getClusterLeaves round trip that produced the pool.
+ */
+function representative(pool: MapPatch[], target: Mix, count: number): MapPatch[] {
+  if (pool.length <= count) return pool
+
+  const chosen: MapPatch[] = []
+  const remaining = [...pool]
+  const running: Mix = { grass: 0, tree: 0, flower: 0 }
+
+  while (chosen.length < count && remaining.length > 0) {
+    const n = chosen.length + 1
+    let bestIndex = 0
+    let bestError = Infinity
+
+    for (let i = 0; i < remaining.length; i++) {
+      const p = remaining[i]
+      const error =
+        Math.abs((running.grass + p.grass_fraction) / n - target.grass) +
+        Math.abs((running.tree + p.tree_fraction) / n - target.tree) +
+        Math.abs((running.flower + p.flower_fraction) / n - target.flower)
+      if (error < bestError) {
+        bestError = error
+        bestIndex = i
+      }
+    }
+
+    const [picked] = remaining.splice(bestIndex, 1)
+    running.grass += picked.grass_fraction
+    running.tree += picked.tree_fraction
+    running.flower += picked.flower_fraction
+    chosen.push(picked)
+  }
+
+  return chosen
 }
 
 /** The prototype's ramp: red at 0, amber at 50, green at 100. */

@@ -108,6 +108,10 @@ export interface MapPatch {
   quality_score: number
   submitted_at: string
   glyph_svg: string | null
+  /** Share of the frame by kind, summing to 1. All-grass for pre-composition rows. */
+  grass_fraction: number
+  tree_fraction: number
+  flower_fraction: number
 }
 
 export interface MapData {

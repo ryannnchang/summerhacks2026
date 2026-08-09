@@ -1,10 +1,15 @@
-"""Decides whether a photo actually shows grass, and how good the grass is.
+"""Decides whether a photo actually shows plants, and how good they are.
+
+The gate is *vegetation*, not strictly lawn: trees and flower beds count, and
+Gemini reports how the frame splits between the three kinds so the score and the
+glyph can both follow the actual composition. `GrassResult.is_grass` keeps its
+name — it is the verified/rejected gate that the whole app already reads.
 
 Two judges share one contract (`GrassResult`):
 
   Gemini (services/gemini_judge.py)  the real judge whenever GEMINI_API_KEY is
-        set — authenticity gate, lushness/biodiversity scoring, feature
-        extraction for the glyphs.
+        set — authenticity gate, composition split, per-kind quality scoring,
+        feature extraction for the glyphs.
   CV heuristic (this file)  HSV coverage + edge texture + saturation vibrance.
         Judges alone when there is no key, and catches every Gemini failure so
         an API outage never turns into a spinner on stage.
@@ -53,6 +58,15 @@ class GrassResult:
     palette: list[str] | None = None
     features: list[str] | None = None
     source: str = "heuristic"  # which judge produced the verdict
+
+    # What the vegetation is made of, as fractions summing to 1, plus the
+    # per-kind quality that goes with each. None from the heuristic, which has
+    # no way to tell a canopy from a lawn; downstream treats that as all grass.
+    grass_fraction: float | None = None
+    tree_fraction: float | None = None
+    flower_fraction: float | None = None
+    tree_quality: float | None = None
+    flower_quality: float | None = None
 
 
 def _dominant_green_hex(rgb: np.ndarray, mask: np.ndarray) -> str:
@@ -106,12 +120,36 @@ def analyze_image(image: Image.Image) -> GrassResult:
 
 
 # Gemini's 0-100 signals -> one 0-100 quality score. Biodiversity is weighted
-# heavily on purpose: weeds and flowers should beat a boring mowed lawn.
+# heavily on purpose: variety should beat a boring mowed lawn.
+#
+# The lushness slot now takes a *composition-weighted* vegetation quality rather
+# than lushness alone, so a frame that is mostly trees is scored mostly on how
+# good its trees are. A pure-grass photo scores exactly what it always did,
+# because its composition collapses to grass 1.0 and the blend returns lushness.
 GEMINI_LUSHNESS_WEIGHT = 0.45
 GEMINI_BIODIVERSITY_WEIGHT = 0.35
 GEMINI_COVERAGE_WEIGHT = 0.20
 
 _HEX_COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
+
+
+def _composition(verdict: GeminiVerdict) -> tuple[float, float, float]:
+    """Gemini's three percentages as fractions summing to 1.
+
+    The model is asked for a sum of 100 and usually obliges, but a strict schema
+    can't enforce a cross-field constraint, so this renormalizes instead of
+    trusting it. An all-zero answer means it declined to split the frame; that
+    falls back to all grass, which is the pre-composition behaviour.
+    """
+    parts = (
+        float(max(0, verdict.grass_percent)),
+        float(max(0, verdict.tree_percent)),
+        float(max(0, verdict.flower_percent)),
+    )
+    total = sum(parts)
+    if total <= 0:
+        return 1.0, 0.0, 0.0
+    return tuple(round(p / total, 4) for p in parts)  # type: ignore[return-value]
 
 
 def merge_gemini(base: GrassResult, verdict: GeminiVerdict) -> GrassResult:
@@ -120,12 +158,25 @@ def merge_gemini(base: GrassResult, verdict: GeminiVerdict) -> GrassResult:
 
     reason: str | None = None
     if not is_grass:
-        reason = (verdict.rejection_reason or "").strip() or "That doesn't look like real grass."
+        reason = (
+            verdict.rejection_reason or ""
+        ).strip() or "That doesn't look like real plants."
+
+    grass_frac, tree_frac, flower_frac = _composition(verdict)
+
+    # Each kind is judged on its own merits, then weighted by how much of the
+    # frame it occupies. A kind that isn't there scores 0 but also weighs 0, so
+    # it can neither help nor hurt.
+    vegetation_quality = (
+        grass_frac * verdict.lushness
+        + tree_frac * verdict.tree_quality
+        + flower_frac * verdict.flower_quality
+    )
 
     quality = 0.0
     if is_grass:
         quality = round(
-            GEMINI_LUSHNESS_WEIGHT * verdict.lushness
+            GEMINI_LUSHNESS_WEIGHT * vegetation_quality
             + GEMINI_BIODIVERSITY_WEIGHT * verdict.biodiversity
             + GEMINI_COVERAGE_WEIGHT * verdict.coverage,
             2,
@@ -144,6 +195,11 @@ def merge_gemini(base: GrassResult, verdict: GeminiVerdict) -> GrassResult:
         palette=palette or None,
         features=features or None,
         source="gemini",
+        grass_fraction=grass_frac,
+        tree_fraction=tree_frac,
+        flower_fraction=flower_frac,
+        tree_quality=float(verdict.tree_quality),
+        flower_quality=float(verdict.flower_quality),
     )
 
 

@@ -5,11 +5,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 **Touch Grass** (browser title: "Competitive Grass") — a group accountability game. At a random
-moment a **drop** fires for a group, members get 15 minutes to photograph real grass, the photo is
-CV-verified and scored on quality × speed, and verified photos land on both a shared global mural
-and a public Mapbox map.
+moment a **drop** fires for a group, members get 15 minutes to photograph real outdoor vegetation —
+lawn, but trees and flower beds count too — the photo is judged and scored on quality × speed, and
+verified photos land on both a shared global mural and a public Mapbox map.
 
-Two processes: FastAPI + SQLite on `:8000`, React + TypeScript + Vite on `:5173`.
+Two processes: FastAPI on `:8000` (Supabase Postgres, or SQLite for a clone with no credentials),
+React + TypeScript + Vite on `:5173`.
 
 ## Commands
 
@@ -39,9 +40,13 @@ There is no linter or formatter configured.
 ## Testing gotcha
 
 `tests/test_grass_flow.py` imports the real `engine` from `app.database` and calls
-`Base.metadata.drop_all()` in an autouse fixture. **Running the tests wipes the dev database**
-(`backend/grass.db`) unless `DATABASE_URL` points elsewhere. Tests go through `TestClient(app)`,
-which triggers the lifespan and starts a real scheduler task.
+`Base.metadata.drop_all()` in an autouse fixture — whatever the config resolves to gets destroyed.
+[conftest.py](backend/tests/conftest.py) is the guard: it points `DATABASE_URL` at a throwaway
+sqlite file in the temp directory, **clears `SUPABASE_DB_URL`** (whose validator in `config.py`
+otherwise wins and would aim `drop_all` at the shared Supabase database), clears the storage
+service key, and hard-fails if the resolved URL still isn't sqlite. That guard has already been
+earned twice; don't loosen it. Tests go through `TestClient(app)`, which triggers the lifespan and
+starts a real scheduler task.
 
 Test images are generated in-process: `fake_grass()` (noisy green, passes), `flat_green()` (fails
 texture), `not_grass()` (fails coverage). Tuning verifier thresholds will break these.
@@ -80,9 +85,21 @@ only knows that shape:
 
 - **Gemini** ([gemini_judge.py](backend/app/services/gemini_judge.py)) judges when
   `GEMINI_API_KEY` is set: one `google-genai` call with a pydantic `response_schema` (strict JSON)
-  doing the authenticity gate (screens/prints/turf), grass classification, lushness + biodiversity
-  scoring (weeds and flowers beat mowed lawn), and palette/feature extraction for the glyphs.
-  Quality becomes `0.45·lushness + 0.35·biodiversity + 0.20·coverage` (`merge_gemini`).
+  doing the authenticity gate (screens/prints/turf), vegetation classification, the composition
+  split, per-kind quality + biodiversity scoring, and palette/feature extraction for the glyphs.
+
+  The gate is **vegetation, not strictly lawn** — trees, shrubs and flower beds verify. Alongside
+  it Gemini reports how the frame divides between grass / trees / flowers, and grades each kind
+  separately (`lushness`, `tree_quality`, `flower_quality`). Quality becomes
+  `0.45·vegetation + 0.35·biodiversity + 0.20·coverage`, where `vegetation` is the three
+  qualities blended by their share of the frame — so a photo that is mostly canopy is scored
+  mostly on how good its canopy is. A pure-grass photo collapses to the old formula exactly, which
+  is what keeps historical scores comparable. `GrassResult.is_grass` keeps its name: it is the
+  verified/rejected gate the whole app already reads.
+
+  The percentages are asked for as a sum of 100, but a strict schema can't enforce a cross-field
+  constraint, so `_composition()` renormalizes whatever comes back and falls back to all-grass if
+  the model declines to split the frame.
 - **CV heuristic** (same file) — HSV green mask → coverage, edge energy → texture, saturation →
   vibrance. Judges alone without a key, and catches every Gemini failure (timeout, outage, bad
   JSON) so a dead API degrades the judging, not the demo.
@@ -112,10 +129,17 @@ standings are independent per group. Two unique constraints carry most of the co
 `(user_id, group_id)` blocks double-joins, `(user_id, drop_id)` blocks double-submissions.
 
 There is no Alembic, but `init_db()` runs a poor-man's migration
-(`_backfill_sqlite_columns` in [database.py](backend/app/database.py)) that `ALTER TABLE ADD
-COLUMN`s any **nullable** model column missing from an existing SQLite db. Additive nullable
-columns are therefore safe; anything else (renames, non-nullable, type changes) still means
-deleting `backend/grass.db` or migrating by hand.
+(`_backfill_missing_columns` in [database.py](backend/app/database.py)) that `ALTER TABLE ADD
+COLUMN`s any **nullable** model column missing from the live database. It runs on Postgres as well
+as SQLite — it used to bail out on anything non-sqlite, which meant a new column reached a fresh
+clone but never reached the shared Supabase database, and every query then failed with "column does
+not exist". Additive nullable columns are therefore safe; anything else (renames, non-nullable,
+type changes) still means dropping the table or migrating by hand.
+
+The migration only runs **at startup**, from the lifespan. `uvicorn --reload` will not apply it if
+its reload is wedged — open WebSocket connections can block the graceful shutdown, leaving the old
+process serving old code and an unmigrated schema. If new columns seem to be missing, restart the
+backend outright before debugging anything else.
 
 ### Mural vs. map
 
@@ -131,8 +155,19 @@ Two different global views of the same submissions, both public (no auth):
 ### Glyphs
 
 Every verified submission gets a procedural SVG tuft ([glyphs.py](backend/app/services/glyphs.py))
-drawn from the judge's signals — lushness sets blade count/height, biodiversity sets wildness,
-palette colors the blades, and feature tags grow clover/flowers/moss. Deterministic: seeded by
+drawn from the judge's signals. **The composition decides what gets drawn** — the grass / tree /
+flower fractions set how many blades, trees and blooms appear, so a frame that was mostly canopy
+draws mostly canopy. Within that, lushness sets blade count/height, `tree_quality` sets trunk
+height and canopy density, `flower_quality` sets bloom size, biodiversity sets wildness, palette
+colors everything, and feature tags still grow clover/moss on top.
+
+Each kind wilts on **its own** signal (`_wilt_of`), so a lush verge under a dead tree draws as
+exactly that. Past 55% wilt a tree drops its canopy entirely and becomes bare branches — a brown
+blob doesn't read as dead at marker size, and a bare silhouette does. A rejection zeroes all three
+qualities, or a fake forest would still draw a healthy canopy.
+
+Composition defaults to all-grass, which is what heuristic-judged rows and every row predating the
+tree/flower split get; those draw exactly as they always did. Deterministic: seeded by
 submission id, so the same row always draws the same tuft. Generated at submit time (after
 `db.flush()` assigns the id), stored in `Submission.glyph_svg`, and lazily backfilled by the map
 route for rows that predate glyphs. The frontend injects it into a Mapbox DOM marker (sized by
@@ -172,8 +207,11 @@ re-skin Mapbox's own chrome (`.mapboxgl-*`).
 ### Routing and session
 
 [App.tsx](frontend/src/App.tsx) is the router. Most routes are wrapped in `RequireSession` and
-bounce to `/auth`; `/map` and `/mural` are deliberately public. `BottomNav` renders only when
-signed in.
+bounce to `/auth`; `/map` is deliberately public. `BottomNav` renders only when signed in.
+
+There is **no `/mural` route or `MuralPage`** — the redesign dropped the UI while leaving the whole
+backend intact (`GET /api/mural`, `mural.place()` on every verified submission, and the
+`api.mural()` client method all still work). Reviving it needs a page and a route, nothing more.
 
 [useSession.tsx](frontend/src/hooks/useSession.tsx) is the session context — `signIn` is
 sign-in and sign-up in one gesture (look the username up, create it if 404). It also holds
@@ -215,6 +253,12 @@ Four constraints drive the shape of the file:
   load — `querySourceFeatures` only sees loaded tiles — and markers are reconciled against
   whatever that source reports on each `render`. Markers are keyed (`p<id>` / `c<cluster_id>`) and
   reused; rebuilding them per frame restarts the CSS pop and flickers the pins.
+- **A cluster shows the true mix of all its members, not of the six it draws.** `clusterProperties`
+  accumulates `sumGrass` / `sumTree` / `sumFlower` (alongside `sumQuality`) during clustering, so
+  the exact average composition is on the cluster feature without fetching a leaf. `getClusterLeaves`
+  then pulls a pool of 60 and `representative()` greedily picks the six whose combined composition
+  best matches that average. Taking the first six would let a mostly-forest neighbourhood draw six
+  lawns purely because they sorted first.
 - **Mapbox positions a marker by writing `transform` onto the root element.** Any CSS animation or
   hover rule touching `transform` outranks that inline style and strands every pin at the map's
   top-left corner, so everything that moves lives on an inner `__inner` wrapper.

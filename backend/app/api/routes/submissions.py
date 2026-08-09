@@ -123,6 +123,11 @@ async def submit_grass(
             else None
         ),
         verdict_source=verdict.source,
+        grass_fraction=verdict.grass_fraction,
+        tree_fraction=verdict.tree_fraction,
+        flower_fraction=verdict.flower_fraction,
+        tree_quality=verdict.tree_quality,
+        flower_quality=verdict.flower_quality,
         submitted_at=now,
     )
 

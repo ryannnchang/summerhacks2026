@@ -1,6 +1,6 @@
 from collections.abc import Iterator
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.config import settings
@@ -33,32 +33,39 @@ def get_db() -> Iterator[Session]:
         db.close()
 
 
-def _backfill_sqlite_columns() -> None:
+def _backfill_missing_columns() -> None:
     """Poor-man's migration: ADD COLUMN for model columns missing from the db.
 
     `create_all()` only creates missing *tables* — it never alters existing ones,
     and there is no Alembic here. Nullable columns can always be added safely, so
-    this keeps an existing grass.db working across additive schema changes.
+    this keeps an existing database working across additive schema changes.
+
+    Runs on Postgres as well as SQLite. It used to bail out on anything that
+    wasn't SQLite, which meant a new nullable column reached a fresh clone but
+    never reached the shared Supabase database — every query then failed with
+    "column does not exist" until someone altered the table by hand.
+
+    Still only additive: renames, type changes and non-nullable columns need a
+    real migration.
     """
-    if not settings.database_url.startswith("sqlite"):
-        return
+    inspector = inspect(engine)
+    existing_tables = set(inspector.get_table_names())
     with engine.begin() as conn:
         for table in Base.metadata.sorted_tables:
-            info = conn.exec_driver_sql(f"PRAGMA table_info('{table.name}')").fetchall()
-            if not info:
+            if table.name not in existing_tables:
                 continue  # create_all is about to build it whole
-            existing = {row[1] for row in info}
+            existing = {column["name"] for column in inspector.get_columns(table.name)}
             for column in table.columns:
                 if column.name in existing or not column.nullable:
                     continue
                 col_type = column.type.compile(engine.dialect)
                 conn.exec_driver_sql(
-                    f"ALTER TABLE {table.name} ADD COLUMN {column.name} {col_type}"
+                    f'ALTER TABLE "{table.name}" ADD COLUMN "{column.name}" {col_type}'
                 )
 
 
 def init_db() -> None:
     from app import models  # noqa: F401  (register tables)
 
-    _backfill_sqlite_columns()
+    _backfill_missing_columns()
     Base.metadata.create_all(bind=engine)

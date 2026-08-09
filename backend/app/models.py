@@ -156,6 +156,17 @@ class Submission(Base):
     features_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     verdict_source: Mapped[str | None] = mapped_column(String(16), nullable=True)
 
+    # What the frame is made of, as fractions summing to 1. The glyph draws
+    # blades, trees and blooms in these proportions, and the map clusters sum
+    # them to show a whole neighbourhood's mix. Null on heuristic-judged rows,
+    # which are treated as all grass.
+    grass_fraction: Mapped[float | None] = mapped_column(Float, nullable=True)
+    tree_fraction: Mapped[float | None] = mapped_column(Float, nullable=True)
+    flower_fraction: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Per-kind 0-100 quality, the lushness equivalent for the other two.
+    tree_quality: Mapped[float | None] = mapped_column(Float, nullable=True)
+    flower_quality: Mapped[float | None] = mapped_column(Float, nullable=True)
+
     # Procedural SVG drawn from the judge's signals; the map renders this as
     # the marker. Generated at submit time, backfilled lazily by the map route.
     glyph_svg: Mapped[str | None] = mapped_column(Text, nullable=True)

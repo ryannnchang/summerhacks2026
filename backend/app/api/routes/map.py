@@ -59,6 +59,11 @@ def read_patches(
                 quality_score=s.quality_score,
                 submitted_at=s.submitted_at,
                 glyph_svg=s.glyph_svg,
+                # Null composition predates the tree/flower split; it was all
+                # grass as far as anything downstream is concerned.
+                grass_fraction=s.grass_fraction if s.grass_fraction is not None else 1.0,
+                tree_fraction=s.tree_fraction or 0.0,
+                flower_fraction=s.flower_fraction or 0.0,
             )
             for s, u in rows
         ],

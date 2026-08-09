@@ -113,6 +113,13 @@ class SubmissionOut(ORMModel):
     verdict_source: str | None = None
     glyph_svg: str | None = None
 
+    # What the frame was made of, and how good each kind was.
+    grass_fraction: float | None = None
+    tree_fraction: float | None = None
+    flower_fraction: float | None = None
+    tree_quality: float | None = None
+    flower_quality: float | None = None
+
     # Rating change from this submission. Only set on the upload response for a
     # Supabase-linked account; null on listings, where it isn't tracked.
     elo_delta: int | None = None
@@ -158,6 +165,13 @@ class MapPatch(BaseModel):
     quality_score: float
     submitted_at: datetime
     glyph_svg: str | None = None
+
+    # Composition, so a map cluster can sum its members and show the right mix
+    # of grass, trees and blooms. Defaults are all-grass, matching how a row
+    # with no Gemini composition is drawn.
+    grass_fraction: float = 1.0
+    tree_fraction: float = 0.0
+    flower_fraction: float = 0.0
 
 
 class MapOut(BaseModel):
