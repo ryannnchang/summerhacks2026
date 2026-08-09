@@ -14,9 +14,13 @@ class UserCreate(BaseModel):
 
 
 class UserLink(BaseModel):
-    """Claims the backend account behind a Supabase (Google) identity."""
+    """Claims the backend account behind a Supabase (Google) identity.
 
-    supabase_uid: str = Field(min_length=8, max_length=36)
+    Identity itself comes from the verified token; `supabase_uid` here is
+    optional and only cross-checked against it.
+    """
+
+    supabase_uid: str | None = Field(default=None, min_length=8, max_length=36)
     username: str = Field(min_length=2, max_length=32, pattern=r"^[a-zA-Z0-9_.-]+$")
     display_name: str | None = Field(default=None, max_length=64)
     email: str | None = Field(default=None, max_length=255)

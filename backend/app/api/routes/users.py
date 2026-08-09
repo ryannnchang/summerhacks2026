@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 
-from app.api.deps import CurrentUser, DbSession
+from app.api.deps import CurrentUser, DbSession, TokenClaims
 from app.models import Group, Membership, Player, User
 from app.schemas import FriendAdd, UserCreate, UserLink, UserOut, UserUpdate
 
@@ -31,14 +31,22 @@ def create_user(payload: UserCreate, db: DbSession) -> User:
 
 
 @router.post("/link", response_model=UserOut)
-def link_supabase_user(payload: UserLink, db: DbSession) -> User:
+def link_supabase_user(payload: UserLink, claims: TokenClaims, db: DbSession) -> User:
     """Finds or creates the backend account behind a Google sign-in.
+
+    Identity comes from the verified token, never the body — before this, the
+    endpoint took any uuid on faith, which let one caller claim another's
+    account. The body still carries the *cosmetics* (username, display name).
 
     Idempotent, and the only place a `players` row is created — which means the
     leaderboard works whether or not the `on_auth_user_created` trigger is
     installed in Supabase.
     """
-    user = db.query(User).filter(User.supabase_uid == payload.supabase_uid).first()
+    supabase_uid: str = claims["sub"]
+    if payload.supabase_uid and payload.supabase_uid != supabase_uid:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "That is not your account")
+
+    user = db.query(User).filter(User.supabase_uid == supabase_uid).first()
 
     if user is None:
         # An account may already exist from before Google auth; adopt it rather
@@ -50,16 +58,18 @@ def link_supabase_user(payload: UserLink, db: DbSession) -> User:
                 display_name=payload.display_name or payload.username,
             )
             db.add(user)
-        user.supabase_uid = payload.supabase_uid
+        user.supabase_uid = supabase_uid
 
     if payload.display_name:
         user.display_name = payload.display_name
-    if payload.email:
-        user.email = payload.email.strip().lower()
+    # The token's email claim wins — it's Google-verified, the body is not.
+    email = claims.get("email") or payload.email
+    if email:
+        user.email = email.strip().lower()
 
-    player = db.get(Player, payload.supabase_uid)
+    player = db.get(Player, supabase_uid)
     if player is None:
-        player = Player(id=payload.supabase_uid, username=user.username)
+        player = Player(id=supabase_uid, username=user.username)
         db.add(player)
     player.display_name = user.display_name
     player.username = user.username
