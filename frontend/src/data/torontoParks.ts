@@ -2,7 +2,8 @@
  * Toronto park locations, for the green-access demo overlay.
  *
  * 2871 park, garden and recreation-ground centroids from OpenStreetMap,
- * clipped to the city boundary and deduped to one point per 120 m (1320 of
+ * clipped to the city boundary and deduped to one point per 120 m, plus
+ * Kenollie Park in Mississauga so the capture compass can be tested from there (1320 of
  * them are named parks; the rest are smaller greens and parkettes).
  *
  * Stored as a flat integer array — [lng, lat, isNamed] x n, coordinates scaled
@@ -372,6 +373,7 @@ const PACKED: number[] = [
   -7938024,4362025,1,-7943139,4370082,1,-7955059,4369241,1,-7937259,4369599,1,-7937887,4379354,1,-7929293,4368655,1,-7938369,4370340,1,-7940905,4364252,1,
   -7943160,4370370,0,-7941157,4370022,1,-7941482,4364772,1,-7931435,4370173,1,-7935034,4364603,1,-7940486,4367875,1,-7949474,4364592,1,-7950880,4366326,1,
   -7948341,4364132,1,-7940182,4364498,1,-7956869,4373366,1,-7921192,4377709,1,-7942574,4370941,1,-7952148,4364904,1,-7938561,4366412,1,
+  -7960480,4356067,1,
 ]
 
 export interface ParkPoint {

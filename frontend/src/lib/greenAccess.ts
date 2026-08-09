@@ -80,6 +80,10 @@ export function accessPoints(
 
   if (withParks) {
     for (const park of torontoParks()) {
+      // The dataset carries a couple of out-of-city points for testing the
+      // capture compass; the overlay's claim is about Toronto, so they're
+      // filtered here rather than left to bloom outside the city.
+      if (!insideToronto(park.lng, park.lat)) continue
       features.push({
         type: 'Feature',
         geometry: { type: 'Point', coordinates: [park.lng, park.lat] },

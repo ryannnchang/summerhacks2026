@@ -3,8 +3,10 @@ import { useNavigate } from 'react-router-dom'
 
 import { api } from '../api/client'
 import { CameraCapture } from '../components/CameraCapture'
+import { ParkCompass } from '../components/ParkCompass'
 import { formatDuration, useCountdown } from '../hooks/useCountdown'
-import { currentCoords } from '../lib/geo'
+import { currentCoords, watchCoords } from '../lib/geo'
+import type { Coords } from '../lib/geo'
 import { setPendingPhoto } from '../lib/pendingPhoto'
 import type { Drop } from '../types'
 
@@ -20,6 +22,24 @@ export function CapturePage() {
   // Ask for location the moment the camera opens — both permission prompts
   // appear together, and the fix is usually resolved before the photo is taken.
   const coords = useMemo(() => currentCoords(), [])
+
+  // Live position for the park compass: the first fix seeds it, then
+  // watchPosition keeps it current so the distance counts down as you walk.
+  // The photo still uploads with `coords` — one fix, resolved once.
+  const [fix, setFix] = useState<Coords | undefined>()
+  useEffect(() => {
+    let cancelled = false
+    void coords.then((value) => {
+      if (!cancelled && value) setFix((current) => current ?? value)
+    })
+    const stop = watchCoords((value) => {
+      if (!cancelled) setFix(value)
+    })
+    return () => {
+      cancelled = true
+      stop()
+    }
+  }, [coords])
 
   const remaining = useCountdown(drop?.status === 'active' ? drop.expires_at : null)
 
@@ -101,7 +121,10 @@ export function CapturePage() {
                 </div>
               </div>
             ) : (
-              <CameraCapture onCapture={handleCapture} />
+              <div className="relative w-full">
+                <CameraCapture onCapture={handleCapture} />
+                <ParkCompass coords={fix} />
+              </div>
             )}
           </div>
         </>
