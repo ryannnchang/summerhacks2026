@@ -18,14 +18,14 @@ mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN
 
 const SOURCE = 'patches'
 /**
- * Two or more photos in one radius collapse into a tile.
+ * Three or more photos in one radius collapse into a tile.
  *
- * This was 4 originally. Real submissions turned out to land within a few metres of each other —
- * a group photographs the same lawn — which at zoom 12 is under a pixel of separation, so an
- * unclustered pair or triple renders as a single pin with the others hidden underneath it. The
- * whole point of the tile is to make an overlapping stack legible, so it has to start at 2.
+ * Worth knowing what this trades off: real submissions land within a few metres of each other —
+ * a group photographs the same lawn — which at zoom 12 is under a pixel of separation. So a pair
+ * that falls below this threshold renders as a single visible pin with the other hidden directly
+ * underneath it, until you zoom to roughly 20.
  */
-const CLUSTER_MIN_POINTS = 2
+const CLUSTER_MIN_POINTS = 3
 const CLUSTER_RADIUS = 70
 
 /**
