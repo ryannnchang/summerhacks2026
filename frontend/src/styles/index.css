@@ -44,13 +44,12 @@ body {
 }
 
 /* Procedural grass tufts (services/glyphs.py). The SVG is injected as raw
-   markup, so it needs to be told to fill its box; the glow is what makes
-   overlapping tufts read as one lit-up patch. */
+   markup, so it needs to be told to fill its box. No glow — the tufts read as
+   flat stickers here; the map keeps its own glow via .patch-marker__glyph. */
 .grass-glyph svg {
   display: block;
   width: 100%;
   height: 100%;
-  filter: drop-shadow(0 0 6px rgba(122, 199, 79, 0.45));
 }
 
 /* Scoreboard flip-digit */
@@ -87,8 +86,9 @@ body {
  */
 
 /*
- * Photo pins. `--ring` and `--glow` are set per pin by GrassMap from the
- * submission's quality score: red at 0, amber at 50, green at 100.
+ * Grass pins. The pin is the procedural tuft itself — no frame, fill or glow.
+ * `--ring` is still set per pin by GrassMap from the submission's quality
+ * score (red at 0, amber at 50, green at 100) and colours the cluster badges.
  *
  * The root carries NO transform, position, or animation. Mapbox positions a
  * marker by writing `transform: translate(...)` onto this element as an inline
@@ -100,28 +100,20 @@ body {
   cursor: pointer;
 }
 
+/* Bare tuft, no card: no frame, no fill, no glow. The grass shape alone is
+   the pin, so the map reads as grass growing on the city rather than photos
+   pinned to it. */
 .patch-marker__inner {
   position: relative;
   width: 100%;
   height: 100%;
-  border-radius: 0.6rem;
-  border: 2.5px solid var(--ring, var(--scoreboard));
-  box-shadow:
-    0 0 0 1px rgba(11, 24, 8, 0.9),
-    0 0 12px var(--glow, transparent);
-  background: var(--turf-800);
-  transition:
-    transform 140ms ease,
-    box-shadow 140ms ease;
+  transition: transform 140ms ease;
   animation: patch-pop 300ms cubic-bezier(0.2, 1.3, 0.4, 1) both;
 }
 
 .patch-marker:hover .patch-marker__inner,
 .patch-marker:focus-visible .patch-marker__inner {
   transform: scale(1.12);
-  box-shadow:
-    0 0 0 1px rgba(11, 24, 8, 0.9),
-    0 0 18px var(--glow, transparent);
 }
 
 .patch-marker:hover,
@@ -129,13 +121,18 @@ body {
   z-index: 2;
 }
 
-.patch-marker img,
-.patch-marker__glyph {
+.patch-marker img {
   width: 100%;
   height: 100%;
   display: block;
   object-fit: cover;
   border-radius: 0.42rem;
+}
+
+.patch-marker__glyph {
+  width: 100%;
+  height: 100%;
+  display: block;
 }
 
 .patch-marker__glyph svg {
@@ -145,41 +142,21 @@ body {
   overflow: visible;
 }
 
-.patch-marker__score {
-  position: absolute;
-  bottom: -0.42rem;
-  right: -0.42rem;
-  min-width: 1.25rem;
-  padding: 0 0.22rem;
-  border-radius: 9999px;
-  background: var(--turf-900);
-  border: 1.5px solid var(--ring, var(--scoreboard));
-  color: var(--chalk);
-  font-family: var(--font-mono);
-  font-size: 0.6rem;
-  line-height: 1.05rem;
-  text-align: center;
-}
-
 /*
  * Cluster tiles. The stack is three thumbnails fanned behind each other, so a
  * cluster reads as "a pile of photos" rather than as a different kind of object.
  * Same root/inner split as .patch-marker, and for the same reason.
  */
+/* Width and height are set per cluster by GrassMap, from the member count. */
 .patch-cluster {
-  width: 58px;
-  height: 58px;
   cursor: pointer;
 }
 
+/* Bare clump, matching the single pins: no frame, no fill, no shadow. */
 .patch-cluster__inner {
   position: relative;
   width: 100%;
   height: 100%;
-  border-radius: 0.7rem;
-  border: 2.5px solid var(--ring, var(--scoreboard));
-  background: var(--turf-800);
-  box-shadow: 0 0 0 1px rgba(11, 24, 8, 0.9);
   transition: transform 140ms ease;
   animation: patch-pop 300ms cubic-bezier(0.2, 1.3, 0.4, 1) both;
 }
@@ -203,36 +180,35 @@ body {
     opacity 260ms ease;
 }
 
+/* The clump: member tufts planted along one baseline, overlapping. Not clipped —
+   blades are allowed to cross outside the box, which is what fuses the separate
+   SVGs into a single patch of grass. */
 .patch-cluster__stack {
   position: absolute;
   inset: 0;
-  border-radius: 0.55rem;
-  overflow: hidden;
 }
 
-.patch-cluster__stack img {
+.patch-cluster__tuft {
   position: absolute;
-  inset: 0;
+  bottom: 0;
+  transform: translateX(-50%);
+  aspect-ratio: 1;
+}
+
+.patch-cluster__tuft svg {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  display: block;
+  overflow: visible;
 }
 
-.patch-cluster__stack img:nth-child(1) {
-  transform: translate(-9%, -9%) rotate(-6deg) scale(0.9);
-}
-.patch-cluster__stack img:nth-child(2) {
-  transform: translate(9%, 4%) rotate(5deg) scale(0.9);
-}
-.patch-cluster__stack img:nth-child(3) {
-  transform: scale(0.86);
-  border-radius: 0.4rem;
-}
-
+/* Centred under the clump — a wide clump has grass in its bottom-right corner,
+   so the old corner position sat on top of the blades. */
 .patch-cluster__count {
   position: absolute;
-  bottom: -0.45rem;
-  right: -0.45rem;
+  bottom: -0.55rem;
+  left: 50%;
+  transform: translateX(-50%);
   min-width: 1.4rem;
   padding: 0 0.25rem;
   border-radius: 9999px;

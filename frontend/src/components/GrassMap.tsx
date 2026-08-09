@@ -204,7 +204,7 @@ export function GrassMap({ center, zoom, patches, focus, onSelect }: Props) {
     }
   }, [ready])
 
-  /** A cluster tile: the top few photos fanned out, with a count badge. */
+  /** A cluster: the member tufts drawn together as one clump, with a count badge. */
   function clusterElement(
     instance: mapboxgl.Map,
     source: mapboxgl.GeoJSONSource,
@@ -218,7 +218,12 @@ export function GrassMap({ center, zoom, patches, focus, onSelect }: Props) {
     el.className = 'patch-cluster'
     el.setAttribute('role', 'button')
     el.setAttribute('tabindex', '0')
-    el.setAttribute('aria-label', `${count} grass photos here. Activate to zoom in.`)
+    el.setAttribute('aria-label', `${count} grass patches here. Activate to zoom in.`)
+    // A denser cluster grows a wider clump, but with a ceiling so a big city
+    // block doesn't swallow the map.
+    const width = Math.min(76 + count * 7, 128)
+    el.style.width = `${width}px`
+    el.style.height = '80px'
 
     // Mapbox positions a marker by writing a transform onto this root element. A CSS animation
     // or hover rule touching `transform` outranks that inline style and strands every pin at the
@@ -237,17 +242,39 @@ export function GrassMap({ center, zoom, patches, focus, onSelect }: Props) {
     badge.textContent = String(count)
     inner.appendChild(badge)
 
-    // Leaves are only available asynchronously; the tile renders immediately and fills in.
-    source.getClusterLeaves(props.cluster_id as number, 3, 0, (err, leaves) => {
+    // Leaves are only available asynchronously; the clump renders empty and fills in.
+    // Up to six tufts are planted along one baseline, overlapping, so a cluster
+    // reads as a denser patch of the same grass rather than a stack of photos.
+    const MAX_TUFTS = 6
+    source.getClusterLeaves(props.cluster_id as number, MAX_TUFTS, 0, (err, leaves) => {
       if (err || !leaves) return
-      for (const leaf of leaves) {
-        const patch = byId.current.get(leaf.properties?.id as number)
-        if (!patch) continue
-        const img = document.createElement('img')
-        img.src = patch.thumbnail_url
-        img.alt = ''
-        stack.appendChild(img)
-      }
+      const patches = leaves
+        .map((leaf) => byId.current.get(leaf.properties?.id as number))
+        .filter((p): p is MapPatch => Boolean(p?.glyph_svg))
+      if (patches.length === 0) return
+
+      // Tallest in the middle, shorter ones to the outside — a natural clump
+      // silhouette instead of a random skyline.
+      const ordered = [...patches].sort((a, b) => a.quality_score - b.quality_score)
+      const arranged: MapPatch[] = []
+      ordered.forEach((patch, i) => (i % 2 ? arranged.unshift(patch) : arranged.push(patch)))
+
+      arranged.forEach((patch, i) => {
+        const tuft = document.createElement('div')
+        tuft.className = 'patch-cluster__tuft'
+        tuft.innerHTML = patch.glyph_svg as string
+        // Spread is deliberately narrow: the tufts must overlap heavily, or the
+        // clump reads as several separate plants instead of one patch.
+        const spread = arranged.length > 1 ? i / (arranged.length - 1) : 0.5
+        tuft.style.left = `${24 + spread * 52}%`
+        tuft.style.width = `${64 + (patch.quality_score / 100) * 30}%`
+        // Back tufts sit slightly higher and dimmer, for a shallow depth cue.
+        const depth = Math.abs(spread - 0.5) * 2
+        tuft.style.bottom = `${depth * 12}%`
+        tuft.style.opacity = String(1 - depth * 0.25)
+        tuft.style.zIndex = String(10 - Math.round(depth * 10))
+        stack.appendChild(tuft)
+      })
     })
 
     const expand = () => {
@@ -280,7 +307,7 @@ export function GrassMap({ center, zoom, patches, focus, onSelect }: Props) {
   function patchElement(patch: MapPatch | undefined): HTMLElement | null {
     if (!patch) return null
 
-    const size = 44 + Math.round((patch.quality_score / 100) * 16)
+    const size = 64 + Math.round((patch.quality_score / 100) * 32)
     const el = document.createElement('div')
     el.className = 'patch-marker'
     el.style.width = `${size}px`
@@ -297,28 +324,23 @@ export function GrassMap({ center, zoom, patches, focus, onSelect }: Props) {
     const inner = document.createElement('div')
     inner.className = 'patch-marker__inner'
     inner.style.setProperty('--ring', scoreColor(patch.quality_score))
-    inner.style.setProperty('--glow', scoreColor(patch.quality_score, 0.55))
     el.appendChild(inner)
 
-    const img = document.createElement('img')
-    img.src = patch.thumbnail_url
-    img.alt = `Grass by ${patch.username}`
-    img.loading = 'lazy'
-    // A missing upload shouldn't leave a broken-image pin — fall back to the procedural tuft.
-    img.addEventListener('error', () => {
-      if (!patch.glyph_svg) return
-      img.remove()
+    // The tuft *is* the pin — no card, no photo. The photo is one click away in
+    // the popup, and a glyph never 404s the way a cross-device upload can.
+    if (patch.glyph_svg) {
       const glyph = document.createElement('div')
       glyph.className = 'patch-marker__glyph'
       glyph.innerHTML = patch.glyph_svg
-      inner.insertBefore(glyph, inner.firstChild)
-    })
-    inner.appendChild(img)
-
-    const chip = document.createElement('span')
-    chip.className = 'patch-marker__score'
-    chip.textContent = patch.quality_score.toFixed(0)
-    inner.appendChild(chip)
+      inner.appendChild(glyph)
+    } else {
+      // Pre-glyph rows still need something clickable.
+      const img = document.createElement('img')
+      img.src = patch.thumbnail_url
+      img.alt = `Grass by ${patch.username}`
+      img.loading = 'lazy'
+      inner.appendChild(img)
+    }
 
     const open = () => select.current?.(patch)
     el.addEventListener('click', open)

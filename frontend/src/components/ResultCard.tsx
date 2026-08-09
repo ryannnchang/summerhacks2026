@@ -60,7 +60,7 @@ export function ResultCard({ submission, previewUrl }: Props) {
           {verified && submission.glyph_svg && (
             <div className="absolute bottom-3 left-3 flex items-end gap-2">
               <div
-                className="w-14 h-14 grass-glyph bg-turf-900/70 rounded-xl p-1"
+                className="w-20 h-20 grass-glyph"
                 dangerouslySetInnerHTML={{ __html: submission.glyph_svg }}
               />
               <p className="font-mono text-[10px] text-chalk bg-turf-900/70 px-2 py-1 rounded-full mb-1">

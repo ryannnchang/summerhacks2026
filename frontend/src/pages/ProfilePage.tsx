@@ -245,14 +245,13 @@ export function ProfilePage() {
             <>
               {/* Every verified drop is a tuft, standing on a shared ground line.
                   Size tracks quality, so a good patch literally grows taller. */}
-              <div className="relative rounded-2xl chalk-border overflow-hidden bg-gradient-to-b from-turf-900 via-turf-800 to-turf-700">
-                <div className="absolute inset-x-0 bottom-0 h-10 bg-turf-600/40" />
-                <div className="relative flex flex-wrap items-end justify-center gap-x-1 gap-y-2 px-3 pt-8 pb-3 min-h-[9rem]">
+              <div className="relative">
+                <div className="relative flex flex-wrap items-end justify-center gap-x-1 gap-y-3">
                   {history.map((s) => {
                     const verified = s.status === 'verified'
-                    // 34px at score 0 up to 68px at 100 — a visible spread.
+                    // 60px at score 0 up to 116px at 100 — a visible spread.
                     // Rejections draw at a fixed small size: they're dead either way.
-                    const size = verified ? 34 + Math.min(s.quality_score, 100) * 0.34 : 38
+                    const size = verified ? 60 + Math.min(s.quality_score, 100) * 0.56 : 66
                     if (!s.glyph_svg) return null
                     return (
                       <button
