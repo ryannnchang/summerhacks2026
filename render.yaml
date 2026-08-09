@@ -1,0 +1,27 @@
+# Render blueprint. New -> Blueprint -> point at this repo, then fill in the
+# sync:false values in the dashboard (they're read from your local .env).
+#
+# Starter, not Free: the free tier sleeps after 15 idle minutes, and a sleeping
+# container means the daily drop never fires and the WebSocket clock is dead.
+services:
+  - type: web
+    name: touch-grass
+    runtime: docker
+    plan: starter
+    healthCheckPath: /api/health
+    numInstances: 1 # single-process by design — see Dockerfile
+    envVars:
+      # Backend secrets (Supabase dashboard -> Project Settings).
+      - key: SUPABASE_DB_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      # Client-side values, needed at BUILD time (baked into the JS bundle).
+      - key: VITE_SUPABASE_URL
+        value: https://telssixwqcboqxodcsvt.supabase.co
+      - key: VITE_SUPABASE_ANON_KEY
+        sync: false
+      - key: VITE_MAPBOX_TOKEN
+        sync: false

@@ -14,9 +14,13 @@ class UserCreate(BaseModel):
 
 
 class UserLink(BaseModel):
-    """Claims the backend account behind a Supabase (Google) identity."""
+    """Claims the backend account behind a Supabase (Google) identity.
 
-    supabase_uid: str = Field(min_length=8, max_length=36)
+    Identity itself comes from the verified token; `supabase_uid` here is
+    optional and only cross-checked against it.
+    """
+
+    supabase_uid: str | None = Field(default=None, min_length=8, max_length=36)
     username: str = Field(min_length=2, max_length=32, pattern=r"^[a-zA-Z0-9_.-]+$")
     display_name: str | None = Field(default=None, max_length=64)
     email: str | None = Field(default=None, max_length=255)
@@ -165,6 +169,9 @@ class MapPatch(BaseModel):
     quality_score: float
     submitted_at: datetime
     glyph_svg: str | None = None
+    # Rejections are mapped too, as dead tufts.
+    status: str = "verified"
+    reject_reason: str | None = None
 
     # Composition, so a map cluster can sum its members and show the right mix
     # of grass, trees and blooms. Defaults are all-grass, matching how a row

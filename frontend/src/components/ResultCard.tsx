@@ -20,24 +20,6 @@ export function ResultCard({ submission, previewUrl }: Props) {
   const navigate = useNavigate()
   const verified = submission.status === 'verified'
 
-  // The judge's output, reassembled as the JSON it came from.
-  const verdictJson = JSON.stringify(
-    {
-      verdict: submission.status,
-      source: submission.verdict_source,
-      ...(submission.reject_reason ? { reason: submission.reject_reason } : {}),
-      coverage: submission.grass_coverage,
-      texture: submission.texture_score,
-      ...(submission.lushness !== null ? { lushness: submission.lushness } : {}),
-      ...(submission.biodiversity !== null ? { biodiversity: submission.biodiversity } : {}),
-      ...(submission.palette ? { palette: submission.palette } : {}),
-      ...(submission.features ? { features: submission.features } : {}),
-      quality: submission.quality_score,
-    },
-    null,
-    1,
-  )
-
   return (
     <div className="animate-popin w-full flex flex-col items-center gap-5">
       <div className="w-full rounded-2xl overflow-hidden chalk-border-solid bg-turf-800">
@@ -50,11 +32,6 @@ export function ResultCard({ submission, previewUrl }: Props) {
           >
             {verified ? 'VERIFIED' : 'REJECTED'}
           </div>
-
-          {/* The judge's raw JSON, stamped on the photo like a lab report. */}
-          <pre className="absolute top-3 left-3 max-w-[60%] max-h-[55%] overflow-auto bg-turf-900/80 text-turf-400 font-mono text-[9px] leading-snug rounded-lg p-2">
-            {verdictJson}
-          </pre>
 
           {/* The tuft this photo became on the map. Server-generated SVG, safe to inject. */}
           {verified && submission.glyph_svg && (

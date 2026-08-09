@@ -112,6 +112,9 @@ export interface MapPatch {
   grass_fraction: number
   tree_fraction: number
   flower_fraction: number
+  /** Rejections appear on the map too, drawn as dead tufts. */
+  status: 'verified' | 'rejected'
+  reject_reason: string | null
 }
 
 export interface MapData {

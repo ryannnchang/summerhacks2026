@@ -37,6 +37,12 @@ class Settings(BaseSettings):
     )
     supabase_storage_bucket: str = "grass-photos"
 
+    # HS256 override for token verification. Unset (the normal case), tokens
+    # verify against the project's public ES256 keys fetched from its JWKS
+    # endpoint — nothing secret required. The test suite sets this so it can
+    # mint its own tokens without a Supabase project in the loop.
+    supabase_jwt_secret: str | None = None
+
     cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
     # Drops — one global drop per day, at a random time inside a daytime window.

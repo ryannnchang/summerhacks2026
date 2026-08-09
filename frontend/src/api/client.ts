@@ -1,4 +1,4 @@
-import { getUserId } from '../lib/session'
+import { supabase } from '../lib/supabase'
 import type {
   Drop,
   Group,
@@ -16,13 +16,17 @@ const BASE = '/api'
 /**
  * Auth seam.
  *
- * The API identifies callers with an `X-User-Id` header — hackathon-grade, the client just
- * says who it is. The id is whatever `/auth` last stored; with nothing stored, group / drop /
- * submission calls 401 and the router bounces the visitor back to the auth screen.
+ * Requests carry the Supabase access token from the Google sign-in as a Bearer
+ * header; the backend verifies its signature against the project's public keys
+ * and resolves the account from the token's `sub`. Signed out, requests go
+ * bare and protected routes 401, bouncing the visitor to the auth screen.
+ * supabase-js refreshes the token in the background, so getSession() is always
+ * current — and it's a local read, not a network round trip.
  */
-function authHeader(): Record<string, string> {
-  const id = getUserId()
-  return id === null ? {} : { 'X-User-Id': String(id) }
+async function authHeader(): Promise<Record<string, string>> {
+  const { data } = await supabase.auth.getSession()
+  const token = data.session?.access_token
+  return token ? { Authorization: `Bearer ${token}` } : {}
 }
 
 export class ApiError extends Error {
@@ -36,7 +40,7 @@ export class ApiError extends Error {
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers)
-  for (const [key, value] of Object.entries(authHeader())) headers.set(key, value)
+  for (const [key, value] of Object.entries(await authHeader())) headers.set(key, value)
   if (init.body && !(init.body instanceof FormData)) {
     headers.set('Content-Type', 'application/json')
   }

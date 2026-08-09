@@ -147,10 +147,13 @@ Two different global views of the same submissions, both public (no auth):
 
 - **Mural** ([mural.py](backend/app/services/mural.py)) — counts all placed tiles across every group
   and assigns the next cell in a fixed-width grid. Every verified submission gets a tile.
-- **Map** ([routes/map.py](backend/app/api/routes/map.py)) — only verified submissions that arrived
-  with coordinates. Lat/lng are optional `Form` fields on the upload; the browser may refuse to
-  share location, in which case the submission still scores and still tiles the mural but never
-  appears on the map. `GET /api/map/patches` returns the configured center alongside the patches.
+- **Map** ([routes/map.py](backend/app/api/routes/map.py)) — every submission that arrived with
+  coordinates, **rejections included**; they carry `status`/`reject_reason` and draw as dead tufts,
+  so a failed attempt still marks the map instead of vanishing. The two surfaces differ on purpose:
+  the mural stays verified-only, the map takes everything geolocated. Lat/lng are optional `Form`
+  fields on the upload; the browser may refuse to share location, in which case the submission
+  still scores and still tiles the mural but never appears on the map. `GET /api/map/patches`
+  returns the configured center alongside the patches.
 
 ### Glyphs
 
@@ -178,9 +181,15 @@ regex-validated upstream and feature tags are matched, never embedded.
 
 ### Auth
 
-There is none. [deps.py](backend/app/api/deps.py) `current_user()` trusts an `X-User-Id` header.
-Every protected route depends on `CurrentUser`, so replacing this is one function. The WebSocket
-route is entirely unauthenticated.
+Real, as of the Supabase JWT commit. [auth.py](backend/app/auth.py) verifies the bearer token and
+[deps.py](backend/app/api/deps.py) `current_user()` resolves its `sub` (the Supabase uuid stored at
+link time) to a `User` row — a valid token for an account that never linked still 401s, pointing at
+`/users/link`. `token_claims` is the variant for routes that run *before* a user row exists.
+Frontend side, `authHeader()` in [client.ts](frontend/src/api/client.ts) reads the access token off
+the Supabase session and sends `Authorization: Bearer …`.
+
+The **WebSocket route is still unauthenticated**, and the drop feed is global, so that is currently
+by design rather than an oversight.
 
 ## Frontend architecture
 
@@ -232,9 +241,10 @@ on refusal or timeout; it must never block the upload.
 
 ### API client
 
-[client.ts](frontend/src/api/client.ts) is the single fetch wrapper: `authHeader()` injects
-`X-User-Id`, `Content-Type` is skipped for `FormData`, and FastAPI's `detail` field is unwrapped
-into an `ApiError` carrying `status`. Add new endpoints as methods on the `api` object rather than
+[client.ts](frontend/src/api/client.ts) is the single fetch wrapper: `authHeader()` pulls the
+Supabase access token off the current session and injects `Authorization: Bearer …` (async, so
+`request()` awaits it), `Content-Type` is skipped for `FormData`, and FastAPI's `detail` field is
+unwrapped into an `ApiError` carrying `status`. Add new endpoints as methods on the `api` object rather than
 calling `fetch` from components.
 
 ### Map component
@@ -262,9 +272,10 @@ Four constraints drive the shape of the file:
 - **Mapbox positions a marker by writing `transform` onto the root element.** Any CSS animation or
   hover rule touching `transform` outranks that inline style and strands every pin at the map's
   top-left corner, so everything that moves lives on an inner `__inner` wrapper.
-- **`clusterMinPoints` is 2, not the default 4.** A group photographs the same lawn, so real
-  submissions land metres apart — an unclustered pair renders as one pin with the other hidden
-  underneath.
+- **`clusterMinPoints` is 3, not the default 4.** A group photographs the same lawn, so real
+  submissions land metres apart — at zoom 12 that is under a pixel of separation. Anything below
+  the threshold renders as one visible pin with the others hidden directly underneath it until you
+  zoom right in, which is the tradeoff this number buys.
 
 Popups are gone: `onSelect` hands the patch up to [MapPage.tsx](frontend/src/pages/MapPage.tsx),
 which renders the detail card as React. Nothing builds marker HTML from user-supplied strings —

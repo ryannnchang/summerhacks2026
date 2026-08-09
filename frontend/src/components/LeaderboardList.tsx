@@ -1,3 +1,4 @@
+import { eloTier } from '../lib/eloTiers'
 import type { BoardRow } from '../lib/leaderboards'
 import { Avatar } from './Avatar'
 
@@ -59,14 +60,29 @@ export function LeaderboardList({ rows, currentUsername, emptyMessage }: Props) 
               </div>
             </div>
 
-            {/* Elo decides the rank, so it gets the big number. */}
-            <div className="text-right flex-shrink-0">
-              <p className="font-mono text-scoreboard font-bold text-base tabular-nums leading-none">
-                {row.elo}
-              </p>
-              <p className="text-chalk/40 text-[9px] font-mono mt-0.5">
-                {row.submissions < 10 ? 'PROVISIONAL' : 'ELO'}
-              </p>
+            {/* Elo decides the rank, so it gets the big number; the tier symbol sits beside it
+                so the ladder is readable without doing arithmetic on four-digit ratings. */}
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <span
+                className={`text-lg leading-none ${eloTier(row.elo).className}`}
+                // Under 10 drops the rating hasn't settled, which the tier name alone doesn't
+                // convey — so it survives here rather than replacing the tier outright.
+                title={
+                  `${eloTier(row.elo).name} (${row.elo})` +
+                  (row.submissions < 10 ? ' · provisional, under 10 drops' : '')
+                }
+                aria-label={eloTier(row.elo).name}
+              >
+                {eloTier(row.elo).symbol}
+              </span>
+              <div className="text-right">
+                <p className="font-mono text-scoreboard font-bold text-base tabular-nums leading-none">
+                  {row.elo}
+                </p>
+                <p className="text-chalk/40 text-[9px] font-mono mt-0.5">
+                  {eloTier(row.elo).name.toUpperCase()}
+                </p>
+              </div>
             </div>
           </li>
         )

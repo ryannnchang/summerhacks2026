@@ -3,7 +3,7 @@ from fastapi import APIRouter, Query
 from app import storage
 from app.api.deps import DbSession
 from app.config import settings
-from app.models import Submission, SubmissionStatus, User
+from app.models import Submission, User
 from app.schemas import MapOut, MapPatch
 from app.services import glyphs
 
@@ -16,7 +16,10 @@ def read_patches(
     limit: int = Query(500, le=2000),
     since_hours: int | None = None,
 ) -> MapOut:
-    """Every verified patch of grass that came with coordinates.
+    """Every submission that came with coordinates, verified or not.
+
+    Rejections are shown too — they draw as dead tufts, so a failed attempt
+    still marks the map rather than vanishing.
 
     Public on purpose — the map is the front door, and it works before you join a group.
     """
@@ -24,7 +27,6 @@ def read_patches(
         db.query(Submission, User)
         .join(User, User.id == Submission.user_id)
         .filter(
-            Submission.status == SubmissionStatus.VERIFIED,
             Submission.latitude.isnot(None),
             Submission.longitude.isnot(None),
         )
@@ -64,6 +66,8 @@ def read_patches(
                 grass_fraction=s.grass_fraction if s.grass_fraction is not None else 1.0,
                 tree_fraction=s.tree_fraction or 0.0,
                 flower_fraction=s.flower_fraction or 0.0,
+                status=s.status,
+                reject_reason=s.reject_reason,
             )
             for s, u in rows
         ],

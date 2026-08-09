@@ -2,6 +2,7 @@ import mapboxgl from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import { useEffect, useRef, useState } from 'react'
 
+import { accessPoints, deadSpots, reachRadiusStops } from '../lib/greenAccess'
 import type { MapPatch } from '../types'
 
 interface Props {
@@ -12,21 +13,33 @@ interface Props {
   /** Set this to fly somewhere — e.g. the visitor's own location. */
   focus?: { coords: [number, number]; zoom?: number } | null
   onSelect?: (patch: MapPatch) => void
+  /** Overlays the green-space accessibility field. */
+  showAccess?: boolean
+  /**
+   * Folds the city's ~2,900 parks into the field and marks the gaps. Turns a
+   * sparse map of submissions into a claim about the whole city.
+   */
+  cityParks?: boolean
 }
 
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN
 
 const SOURCE = 'patches'
 /**
- * Two or more photos in one radius collapse into a tile.
+ * Three or more photos in one radius collapse into a tile.
  *
- * This was 4 originally. Real submissions turned out to land within a few metres of each other —
- * a group photographs the same lawn — which at zoom 12 is under a pixel of separation, so an
- * unclustered pair or triple renders as a single pin with the others hidden underneath it. The
- * whole point of the tile is to make an overlapping stack legible, so it has to start at 2.
+ * Worth knowing what this trades off: real submissions land within a few metres of each other —
+ * a group photographs the same lawn — which at zoom 12 is under a pixel of separation. So a pair
+ * that falls below this threshold renders as a single visible pin with the other hidden directly
+ * underneath it, until you zoom to roughly 20.
  */
-const CLUSTER_MIN_POINTS = 2
+const CLUSTER_MIN_POINTS = 3
 const CLUSTER_RADIUS = 70
+
+const ACCESS_SOURCE = 'green-access'
+const ACCESS_LAYER = 'green-access-heat'
+const DEAD_SOURCE = 'green-deserts'
+const DEAD_LAYER = 'green-deserts-fill'
 
 /**
  * Mapbox GL wrapper.
@@ -40,7 +53,15 @@ const CLUSTER_RADIUS = 70
  * synced from whatever that source currently reports. This is Mapbox's documented approach for
  * HTML markers on a clustered source.
  */
-export function GrassMap({ center, zoom, patches, focus, onSelect }: Props) {
+export function GrassMap({
+  center,
+  zoom,
+  patches,
+  focus,
+  onSelect,
+  showAccess,
+  cityParks,
+}: Props) {
   const container = useRef<HTMLDivElement>(null)
   const map = useRef<mapboxgl.Map | null>(null)
   const centered = useRef(false)
@@ -83,6 +104,92 @@ export function GrassMap({ center, zoom, patches, focus, onSelect }: Props) {
     )
 
     instance.on('load', () => {
+      // Accessibility choropleth. Added before the patch source so it always
+      // paints underneath, and starts hidden until the toggle asks for it.
+      instance.addSource(ACCESS_SOURCE, {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      })
+
+      // Slot it into the basemap's own layer stack, underneath the roads, so
+      // streets, parks and labels all draw on top of the colour. Painting it
+      // last (the default) buries the city under a sheet of fill and the map
+      // stops being a map. Falls back to the first label layer, then to the
+      // top, if this style ever stops having road layers.
+      const styleLayers = instance.getStyle()?.layers ?? []
+      const beforeId =
+        styleLayers.find(
+          (l) => l.type === 'line' && 'source-layer' in l && l['source-layer'] === 'road',
+        )?.id ??
+        styleLayers.find((l) => l.id.startsWith('road'))?.id ??
+        styleLayers.find((l) => l.type === 'symbol')?.id
+
+      // Green deserts sit below the heat so a sliver of served ground inside a
+      // gap still reads green rather than being covered by the desert fill.
+      instance.addSource(DEAD_SOURCE, {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      })
+      instance.addLayer(
+        {
+          id: DEAD_LAYER,
+          type: 'fill',
+          source: DEAD_SOURCE,
+          layout: { visibility: 'none' },
+          paint: {
+            // Red is earned here, unlike over the submissions-only field: with
+            // every park in the city accounted for, blank ground is a real gap,
+            // not missing data.
+            'fill-color': '#b0342a',
+            'fill-opacity': ['interpolate', ['linear'], ['zoom'], 9, 0.3, 14, 0.4],
+            'fill-antialias': false,
+          },
+        },
+        beforeId,
+      )
+
+      const [near, far] = reachRadiusStops(center[0])
+
+      instance.addLayer(
+        {
+          id: ACCESS_LAYER,
+          type: 'heatmap',
+          source: ACCESS_SOURCE,
+          layout: { visibility: 'none' },
+          paint: {
+            'heatmap-weight': ['get', 'weight'],
+            // Radius is in screen pixels, so it must be re-derived per zoom to
+            // hold 400 m on the ground. Base 2 matches Web Mercator's doubling.
+            'heatmap-radius': [
+              'interpolate',
+              ['exponential', 2],
+              ['zoom'],
+              near.zoom, near.pixels,
+              far.zoom, far.pixels,
+            ],
+            // Kept near 1 so overlapping catchments accumulate honestly rather
+            // than saturating the moment two patches are near each other.
+            'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 9, 0.9, 16, 1.2],
+            // Fully transparent at zero: ground with no evidence shows the
+            // plain basemap instead of being painted a colour that would imply
+            // a finding. Colour only ever means "green space was found here".
+            'heatmap-color': [
+              'interpolate',
+              ['linear'],
+              ['heatmap-density'],
+              0, 'rgba(0,0,0,0)',
+              0.08, 'rgba(154,161,156,0.25)', // the faint outer edge of one patch
+              0.3, 'rgba(216,200,96,0.45)',
+              0.55, 'rgba(156,204,81,0.60)',
+              0.8, 'rgba(63,163,77,0.72)',
+              1, 'rgba(28,120,52,0.82)', // several patches, same short walk
+            ],
+            'heatmap-opacity': ['interpolate', ['linear'], ['zoom'], 9, 0.75, 16, 0.9],
+          },
+        },
+        beforeId,
+      )
+
       instance.addSource(SOURCE, {
         type: 'geojson',
         data: { type: 'FeatureCollection', features: [] },
@@ -166,6 +273,29 @@ export function GrassMap({ center, zoom, patches, focus, onSelect }: Props) {
       })),
     })
   }, [patches, ready])
+
+  // Catchment circles are geometry around fixed points, so unlike the old grid
+  // they don't depend on the viewport and never need rebuilding on pan or zoom.
+  useEffect(() => {
+    const instance = map.current
+    if (!instance || !ready) return
+
+    instance.setLayoutProperty(ACCESS_LAYER, 'visibility', showAccess ? 'visible' : 'none')
+    instance.setLayoutProperty(DEAD_LAYER, 'visibility', showAccess && cityParks ? 'visible' : 'none')
+    if (!showAccess) return
+
+    const heat = instance.getSource(ACCESS_SOURCE) as mapboxgl.GeoJSONSource | undefined
+    heat?.setData(accessPoints(patches, cityParks))
+
+    if (!cityParks) return
+    // ~13k cells against ~2.9k sources. Deferred a frame so the heat layer
+    // paints immediately instead of the whole toggle waiting on the sweep.
+    const deferred = window.setTimeout(() => {
+      const deserts = instance.getSource(DEAD_SOURCE) as mapboxgl.GeoJSONSource | undefined
+      deserts?.setData(deadSpots(patches))
+    }, 0)
+    return () => window.clearTimeout(deferred)
+  }, [showAccess, cityParks, patches, ready])
 
   useEffect(() => {
     const instance = map.current

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 
 import { api, ApiError } from '../api/client'
 import { useSession } from '../hooks/useSession'
+import { BASE_RATING, eloTier } from '../lib/eloTiers'
 import type { Submission, User } from '../types'
 
 function formatDate(iso: string): string {
@@ -228,10 +229,29 @@ export function ProfilePage() {
             </div>
           </div>
 
-          <div className="flex gap-2.5 mb-6">
+          <div className="flex gap-2.5 mb-3">
             <Stat label="ELO" value={me.elo === null ? '—' : String(me.elo)} />
             <Stat label="POINTS" value={me.total_score.toFixed(0)} />
             <Stat label="STREAK" value={String(me.streak)} />
+          </div>
+
+          {/* The rating is four digits of nothing until you know where it sits on the ladder. */}
+          <div className="flex items-center gap-2.5 mb-6 rounded-xl bg-turf-800/70 chalk-border p-3">
+            <span className={`text-2xl leading-none ${eloTier(me.elo).className}`} aria-hidden>
+              {eloTier(me.elo).symbol}
+            </span>
+            <div className="min-w-0">
+              <p className={`font-display text-xl tracking-wide leading-none ${eloTier(me.elo).className}`}>
+                {eloTier(me.elo).name.toUpperCase()}
+              </p>
+              <p className="text-chalk/40 text-[10px] font-mono mt-1">
+                {me.elo === null
+                  ? 'NO RATING YET'
+                  : me.elo === BASE_RATING
+                    ? `${me.elo} · STARTING RATING`
+                    : `${me.elo} · ${me.elo > BASE_RATING ? '+' : ''}${me.elo - BASE_RATING} FROM BASE`}
+              </p>
+            </div>
           </div>
 
           <h2 className="font-mono text-chalk/50 text-xs tracking-[0.2em] mb-3">YOUR FIELD</h2>

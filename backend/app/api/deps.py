@@ -1,45 +1,64 @@
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import Depends, Header, HTTPException, Path, status
 from sqlalchemy.orm import Session
 
+from app.auth import TokenError, verify_token
 from app.database import get_db
 from app.models import Group, Membership, User
 
 DbSession = Annotated[Session, Depends(get_db)]
 
+AuthHeader = Annotated[str | None, Header(alias="Authorization")]
 
-def current_user(
-    db: DbSession,
-    x_user_id: Annotated[int | None, Header(alias="X-User-Id")] = None,
-) -> User:
-    """Hackathon-grade auth: the client just says who it is.
 
-    Replace with real session tokens before this touches the open internet.
+def _claims_from(authorization: str | None) -> dict[str, Any]:
+    """Verifies the Bearer token and returns its claims, or 401s."""
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Sign in to do that")
+    try:
+        return verify_token(authorization[7:].strip())
+    except TokenError as exc:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, str(exc)) from exc
+
+
+def token_claims(authorization: AuthHeader = None) -> dict[str, Any]:
+    """The verified Supabase claims alone — for routes that run before a user
+    row exists, i.e. /users/link."""
+    return _claims_from(authorization)
+
+
+TokenClaims = Annotated[dict[str, Any], Depends(token_claims)]
+
+
+def current_user(db: DbSession, authorization: AuthHeader = None) -> User:
+    """The user row behind a verified Supabase token.
+
+    The token's `sub` is the Supabase uuid stored at link time; a valid token
+    for an account that never linked still 401s, pointing at /users/link.
     """
-    if x_user_id is None:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Missing X-User-Id header")
-    user = db.get(User, x_user_id)
+    claims = _claims_from(authorization)
+    user = db.query(User).filter(User.supabase_uid == claims["sub"]).first()
     if user is None:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Unknown user")
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Account not linked yet")
     return user
 
 
 CurrentUser = Annotated[User, Depends(current_user)]
 
 
-def optional_user(
-    db: DbSession,
-    x_user_id: Annotated[int | None, Header(alias="X-User-Id")] = None,
-) -> User | None:
+def optional_user(db: DbSession, authorization: AuthHeader = None) -> User | None:
     """Same as `current_user`, but signed-out callers get None instead of a 401.
 
     The drop clock and the global leaderboard are public — you can watch without
-    an account, you just can't submit.
+    an account, you just can't submit. A header that's present but *invalid*
+    still 401s: silently downgrading a broken token to "signed out" would bury
+    real auth bugs.
     """
-    if x_user_id is None:
+    if not authorization:
         return None
-    return db.get(User, x_user_id)
+    claims = _claims_from(authorization)
+    return db.query(User).filter(User.supabase_uid == claims["sub"]).first()
 
 
 OptionalUser = Annotated[User | None, Depends(optional_user)]

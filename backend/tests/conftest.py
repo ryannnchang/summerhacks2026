@@ -26,6 +26,11 @@ os.environ["SUPABASE_DB_URL"] = ""
 os.environ["SUPABASE_SERVICE_ROLE_KEY"] = ""
 os.environ["SUPABASE_SERVICE_KEY"] = ""
 
+# Switch token verification to HS256 with a known secret, so tests can mint
+# their own JWTs instead of needing a live Supabase project's signing keys.
+TEST_JWT_SECRET = "test-only-jwt-secret-0123456789abcdef"  # 32+ bytes, per RFC 7518
+os.environ["SUPABASE_JWT_SECRET"] = TEST_JWT_SECRET
+
 from app.config import settings  # noqa: E402  (must come after the env is set)
 
 if not settings.database_url.startswith("sqlite"):
