@@ -14,10 +14,10 @@ export function EloLadder({ elo }: { elo: number | null | undefined }) {
   const ranked = position !== null
 
   return (
-    <div className="rounded-xl bg-turf-800/70 chalk-border p-3">
+    <div className="rounded-xl bg-turf-600 chalk-border p-3">
       <div className="flex items-baseline justify-between mb-2">
-        <h3 className="font-mono text-chalk/50 text-[10px] tracking-[0.2em]">ALL RANKS</h3>
-        <p className="font-mono text-chalk/30 text-[9px] tracking-wider">ELO →</p>
+        <h3 className="font-mono text-chalk/80 text-[10px] tracking-[0.2em]">ALL RANKS</h3>
+        <p className="font-mono text-chalk/70 text-[9px] tracking-wider">ELO →</p>
       </div>
 
       {/* Pointer track. Reserved height even when unranked, so toggling the
@@ -56,7 +56,7 @@ export function EloLadder({ elo }: { elo: number | null | undefined }) {
                 <span className={`font-mono text-[10px] font-bold leading-tight ${tier.className}`}>
                   {tier.name}
                 </span>
-                <span className="font-mono text-[9px] leading-tight text-chalk/40 tabular-nums">
+                <span className="font-mono text-[9px] leading-tight text-chalk/70 tabular-nums">
                   {tierRangeLabel(tier)}
                 </span>
               </span>
@@ -97,12 +97,12 @@ export function EloLadder({ elo }: { elo: number | null | undefined }) {
               </span>
               <dt
                 className={`font-mono text-[10px] truncate ${
-                  here ? 'text-chalk font-bold' : 'text-chalk/50'
+                  here ? 'text-chalk font-bold' : 'text-chalk'
                 }`}
               >
                 {tier.name}
               </dt>
-              <dd className="font-mono text-[9px] text-chalk/30 tabular-nums ml-auto">
+              <dd className="font-mono text-[9px] text-chalk/70 tabular-nums ml-auto">
                 {tierRangeLabel(tier)}
               </dd>
             </div>
@@ -111,7 +111,7 @@ export function EloLadder({ elo }: { elo: number | null | undefined }) {
       </dl>
 
       {!ranked && (
-        <p className="text-chalk/40 text-[10px] font-mono mt-2 text-center">
+        <p className="text-chalk/70 text-[10px] font-mono mt-2 text-center">
           No rating yet — land a verified patch to take your place on the scale.
         </p>
       )}
