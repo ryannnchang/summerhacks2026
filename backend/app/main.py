@@ -29,6 +29,17 @@ async def lifespan(app: FastAPI):
     init_db()
     settings.upload_dir.mkdir(parents=True, exist_ok=True)
 
+    # Shared database + local-only photo storage is always a misconfiguration:
+    # every upload writes a row all teammates can see pointing at a file only
+    # this machine can serve. It bit silently for days — 24 broken map photos —
+    # so now it screams at startup instead.
+    if settings.supabase_db_url and not settings.supabase_service_key:
+        logging.getLogger(__name__).warning(
+            "SUPABASE_DB_URL is set but SUPABASE_SERVICE_ROLE_KEY is not: photos "
+            "will save to THIS machine's disk while their rows go to the shared "
+            "database — broken images for everyone else. Add the key to .env."
+        )
+
     stop = asyncio.Event()
     task = asyncio.create_task(scheduler_loop(stop))
     try:

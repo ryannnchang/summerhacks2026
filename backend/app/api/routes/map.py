@@ -10,6 +10,24 @@ from app.services import glyphs
 router = APIRouter(prefix="/map", tags=["map"])
 
 
+def _vegetation_quality(s: Submission) -> float | None:
+    """Composition-weighted vegetation quality, mirroring merge_gemini's blend.
+
+    None when the heuristic judged (no lushness signal). Rows predating the
+    tree/flower split have no fractions and collapse to lushness alone.
+    """
+    if s.lushness is None:
+        return None
+    if s.grass_fraction is None:
+        return round(s.lushness, 1)
+    return round(
+        s.grass_fraction * s.lushness
+        + (s.tree_fraction or 0.0) * (s.tree_quality or 0.0)
+        + (s.flower_fraction or 0.0) * (s.flower_quality or 0.0),
+        1,
+    )
+
+
 @router.get("/patches", response_model=MapOut)
 def read_patches(
     db: DbSession,
@@ -68,6 +86,9 @@ def read_patches(
                 flower_fraction=s.flower_fraction or 0.0,
                 status=s.status,
                 reject_reason=s.reject_reason,
+                grass_coverage=s.grass_coverage,
+                biodiversity=s.biodiversity,
+                vegetation_quality=_vegetation_quality(s),
             )
             for s, u in rows
         ],

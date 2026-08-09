@@ -115,6 +115,10 @@ export interface MapPatch {
   /** Rejections appear on the map too, drawn as dead tufts. */
   status: 'verified' | 'rejected'
   reject_reason: string | null
+  /** Judge signals for the tap popup; vegetation_quality is null on heuristic rows. */
+  grass_coverage: number
+  biodiversity: number | null
+  vegetation_quality: number | null
 }
 
 export interface MapData {

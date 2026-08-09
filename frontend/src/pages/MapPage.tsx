@@ -2,11 +2,37 @@ import { useCallback, useEffect, useState } from 'react'
 
 import { api } from '../api/client'
 import { GrassMap } from '../components/GrassMap'
+import { useSession } from '../hooks/useSession'
 import type { MapData, MapPatch } from '../types'
 
 const TORONTO: [number, number] = [43.6532, -79.3832]
 const DEFAULT_ZOOM = 12
 const REFRESH_MS = 30_000
+
+/** Popup photo with the glyph as a fallback for unreachable cross-device files. */
+function PopupThumb({ patch }: { patch: MapPatch }) {
+  const [broken, setBroken] = useState(false)
+
+  // A new selection gets a fresh chance even if the last photo was broken.
+  useEffect(() => setBroken(false), [patch.submission_id])
+
+  if (broken && patch.glyph_svg) {
+    return (
+      <div
+        className="w-16 h-16 rounded-lg flex-shrink-0 grass-glyph bg-turf-900/60 p-1"
+        dangerouslySetInnerHTML={{ __html: patch.glyph_svg }}
+      />
+    )
+  }
+  return (
+    <img
+      src={patch.thumbnail_url}
+      alt={`Grass by ${patch.username}`}
+      onError={() => setBroken(true)}
+      className="w-16 h-16 rounded-lg object-cover flex-shrink-0"
+    />
+  )
+}
 
 export function MapPage() {
   const [data, setData] = useState<MapData | null>(null)
@@ -15,6 +41,12 @@ export function MapPage() {
   const [selected, setSelected] = useState<MapPatch | null>(null)
   const [showAccess, setShowAccess] = useState(false)
   const [cityParks, setCityParks] = useState(false)
+  // GLOBAL shows everyone; MINE filters to the signed-in player's own patches.
+  const [mineOnly, setMineOnly] = useState(false)
+  const { user } = useSession()
+
+  const patches = data?.patches ?? []
+  const shown = mineOnly && user ? patches.filter((p) => p.username === user.username) : patches
 
   useEffect(() => {
     const load = () =>
@@ -48,7 +80,7 @@ export function MapPage() {
       <GrassMap
         center={data?.center ?? TORONTO}
         zoom={DEFAULT_ZOOM}
-        patches={data?.patches ?? []}
+        patches={shown}
         focus={focus}
         onSelect={setSelected}
         showAccess={showAccess}
@@ -64,14 +96,39 @@ export function MapPage() {
             {data ? (
               <>
                 <span className="font-mono text-scoreboard font-bold text-lg">
-                  {data.patch_count}
+                  {mineOnly ? shown.length : data.patch_count}
                 </span>{' '}
-                patch{data.patch_count === 1 ? '' : 'es'} touched
+                {mineOnly ? 'of your patches' : `patch${data.patch_count === 1 ? '' : 'es'} touched`}
               </>
             ) : (
               'Loading…'
             )}
           </p>
+
+          {user && (
+            <div className="flex rounded-lg border border-chalk/20 overflow-hidden mb-2">
+              {([false, true] as const).map((mine) => (
+                <button
+                  key={String(mine)}
+                  onClick={() => {
+                    setMineOnly(mine)
+                    // Whatever's open in the popup may no longer be on the map.
+                    if (mine && selected && selected.username !== user.username) {
+                      setSelected(null)
+                    }
+                  }}
+                  aria-pressed={mineOnly === mine}
+                  className={`flex-1 font-mono text-xs tracking-widest py-2 transition-colors ${
+                    mineOnly === mine
+                      ? 'bg-scoreboard text-turf-900 font-bold'
+                      : 'text-chalk/70 hover:text-chalk'
+                  }`}
+                >
+                  {mine ? 'MINE' : 'GLOBAL'}
+                </button>
+              ))}
+            </div>
+          )}
           {data?.patch_count === 0 && (
             <p className="text-chalk/50 text-xs leading-relaxed mb-3">
               No grass logged yet. Pins appear here once submissions come in with a location.
@@ -153,7 +210,7 @@ export function MapPage() {
         </div>
 
         {selected && (
-          <div className="relative bg-turf-800/95 backdrop-blur-sm chalk-border rounded-2xl p-4 pr-8 flex gap-3 items-center pointer-events-auto">
+          <div className="relative bg-turf-800/95 backdrop-blur-sm chalk-border rounded-2xl p-4 pr-8 pointer-events-auto">
             <button
               onClick={() => setSelected(null)}
               aria-label="Close"
@@ -161,34 +218,58 @@ export function MapPage() {
             >
               ×
             </button>
-            <img
-              src={selected.thumbnail_url}
-              alt={`Grass by ${selected.username}`}
-              className="w-16 h-16 rounded-lg object-cover flex-shrink-0"
-            />
-            <div className="min-w-0">
-              <p className="text-chalk font-semibold text-sm truncate">
-                @{selected.username}
-                {selected.status === 'rejected' && (
-                  <span className="ml-2 text-[9px] px-1.5 py-0.5 rounded-full bg-dirt/50 text-dirt-light align-middle">
-                    REJECTED
-                  </span>
+            <div className="flex gap-3 items-center">
+              {/* A photo uploaded from a machine without the storage key lives on
+                  that machine's disk — unreachable from here. The tuft stands in. */}
+              <PopupThumb patch={selected} />
+              <div className="min-w-0">
+                <p className="text-chalk font-semibold text-sm truncate">
+                  @{selected.username}
+                  {selected.status === 'rejected' && (
+                    <span className="ml-2 text-[9px] px-1.5 py-0.5 rounded-full bg-dirt/50 text-dirt-light align-middle">
+                      REJECTED
+                    </span>
+                  )}
+                </p>
+                {selected.status === 'rejected' ? (
+                  <p className="text-dirt-light text-xs mt-0.5 line-clamp-2">
+                    {selected.reject_reason ?? 'Not grass.'}
+                  </p>
+                ) : (
+                  <p className="font-mono text-scoreboard text-xs mt-0.5">
+                    {selected.total_score.toFixed(0)} pts
+                  </p>
                 )}
-              </p>
-              {selected.status === 'rejected' ? (
-                <p className="text-dirt-light text-xs mt-0.5 line-clamp-2">
-                  {selected.reject_reason ?? 'Not grass.'}
+                <p className="text-chalk/40 text-[10px] mt-0.5">
+                  {new Date(selected.submitted_at).toLocaleString()}
                 </p>
-              ) : (
-                <p className="font-mono text-scoreboard text-xs mt-0.5">
-                  {selected.total_score.toFixed(0)} pts · quality{' '}
-                  {selected.quality_score.toFixed(0)}
-                </p>
-              )}
-              <p className="text-chalk/40 text-[10px] mt-0.5">
-                {new Date(selected.submitted_at).toLocaleString()}
-              </p>
+              </div>
             </div>
+
+            {/* The judge's signals. Vegetation quality is null on heuristic-judged
+                rows — overall quality stands in so the row never looks broken. */}
+            {selected.status === 'verified' && (
+              <dl className="grid grid-cols-3 gap-2 mt-3 pt-2.5 border-t border-chalk/10 text-center">
+                <div>
+                  <dt className="text-chalk/50 text-[9px] font-mono tracking-wide">VEGETATION</dt>
+                  <dd className="font-mono text-chalk font-bold text-sm tabular-nums">
+                    {(selected.vegetation_quality ?? selected.quality_score).toFixed(0)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-chalk/50 text-[9px] font-mono tracking-wide">BIODIVERSITY</dt>
+                  <dd className="font-mono text-chalk font-bold text-sm tabular-nums">
+                    {selected.biodiversity === null ? '—' : selected.biodiversity.toFixed(0)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-chalk/50 text-[9px] font-mono tracking-wide">COVERAGE</dt>
+                  <dd className="font-mono text-chalk font-bold text-sm tabular-nums">
+                    {(selected.grass_coverage * 100).toFixed(0)}%
+                  </dd>
+                </div>
+              </dl>
+            )}
           </div>
         )}
 

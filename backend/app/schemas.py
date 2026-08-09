@@ -180,6 +180,13 @@ class MapPatch(BaseModel):
     tree_fraction: float = 0.0
     flower_fraction: float = 0.0
 
+    # The judge's signals, for the tap popup. vegetation_quality is the same
+    # composition-weighted blend the score uses; None when the CV heuristic
+    # judged and there are no per-kind signals to blend.
+    grass_coverage: float = 0.0
+    biodiversity: float | None = None
+    vegetation_quality: float | None = None
+
 
 class MapOut(BaseModel):
     center: tuple[float, float]
