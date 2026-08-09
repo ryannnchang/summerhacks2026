@@ -6,7 +6,7 @@ import { CameraCapture } from '../components/CameraCapture'
 import { ParkCompass } from '../components/ParkCompass'
 import { formatDuration, useCountdown } from '../hooks/useCountdown'
 import { currentCoords, watchCoords } from '../lib/geo'
-import type { Coords } from '../lib/geo'
+import type { Coords, GeoStatus } from '../lib/geo'
 import { setPendingPhoto } from '../lib/pendingPhoto'
 import type { Drop } from '../types'
 
@@ -27,14 +27,23 @@ export function CapturePage() {
   // watchPosition keeps it current so the distance counts down as you walk.
   // The photo still uploads with `coords` — one fix, resolved once.
   const [fix, setFix] = useState<Coords | undefined>()
+  const [geoStatus, setGeoStatus] = useState<GeoStatus>('pending')
   useEffect(() => {
     let cancelled = false
     void coords.then((value) => {
-      if (!cancelled && value) setFix((current) => current ?? value)
+      if (!cancelled && value) {
+        setFix((current) => current ?? value)
+        setGeoStatus('ok')
+      }
     })
-    const stop = watchCoords((value) => {
-      if (!cancelled) setFix(value)
-    })
+    const stop = watchCoords(
+      (value) => {
+        if (!cancelled) setFix(value)
+      },
+      (status) => {
+        if (!cancelled) setGeoStatus(status)
+      },
+    )
     return () => {
       cancelled = true
       stop()
@@ -123,7 +132,7 @@ export function CapturePage() {
             ) : (
               <div className="relative w-full">
                 <CameraCapture onCapture={handleCapture} />
-                <ParkCompass coords={fix} />
+                <ParkCompass coords={fix} geoStatus={geoStatus} />
               </div>
             )}
           </div>

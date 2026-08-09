@@ -1,11 +1,14 @@
 import { useMemo, useState } from 'react'
 
 import { useHeading } from '../hooks/useHeading'
+import type { GeoStatus } from '../lib/geo'
 import { compassPoint, formatDistance, nearestPark } from '../lib/nearestPark'
 import { FACING_TOLERANCE, GroundArrow } from './GroundArrow'
 
 interface Props {
   coords?: { latitude: number; longitude: number }
+  /** Why there's no fix, so the empty state can say something useful. */
+  geoStatus?: GeoStatus
 }
 
 /**
@@ -15,7 +18,7 @@ interface Props {
  * keeps pointing at the park. Without one (desktop, denied permission) it
  * degrades to a fixed compass bearing, which still tells you which way to walk.
  */
-export function ParkCompass({ coords }: Props) {
+export function ParkCompass({ coords, geoStatus = 'pending' }: Props) {
   const { heading, pitch, permission, request } = useHeading()
   const [on, setOn] = useState(true)
 
@@ -49,9 +52,13 @@ export function ParkCompass({ coords }: Props) {
           🧭
         </span>
         <p className="text-chalk/70 text-[10px] leading-tight flex-1">
-          {!coords
-            ? 'Waiting for your location — allow it to see the way to the nearest park.'
-            : 'No park within 5 km. This only knows Toronto.'}
+          {coords
+            ? 'No park within 5 km. This only knows Toronto.'
+            : geoStatus === 'denied'
+              ? 'Location is blocked. Allow it for this site in your browser settings, then reopen the camera.'
+              : geoStatus === 'unavailable'
+                ? "Your device won't give a position — the compass needs GPS."
+                : 'Finding your location…'}
         </p>
         <button
           onClick={() => setOn(false)}
