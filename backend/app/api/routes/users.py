@@ -59,9 +59,11 @@ def link_supabase_user(payload: UserLink, claims: TokenClaims, db: DbSession) ->
             )
             db.add(user)
         user.supabase_uid = supabase_uid
-
-    if payload.display_name:
-        user.display_name = payload.display_name
+        # Google's name seeds the display name for a brand-new account only.
+        # Re-running link on every sign-in must NOT clobber a name the player
+        # chose in their profile — that made renames silently revert.
+        if payload.display_name:
+            user.display_name = payload.display_name
     # The token's email claim wins — it's Google-verified, the body is not.
     email = claims.get("email") or payload.email
     if email:
@@ -101,6 +103,10 @@ def update_me(payload: UserUpdate, user: CurrentUser, db: DbSession) -> UserOut:
         if db.query(User).filter(User.username == payload.username).first():
             raise HTTPException(status.HTTP_409_CONFLICT, "Username is taken")
         user.username = payload.username
+        # A chosen handle becomes the shown name too — the leaderboard renders
+        # display_name, and a rename that doesn't show up there reads as a bug.
+        # An explicit display_name in the same request still wins below.
+        user.display_name = payload.username
     if payload.display_name:
         user.display_name = payload.display_name
 

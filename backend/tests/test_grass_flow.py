@@ -809,3 +809,18 @@ def test_composition_survives_the_round_trip(client):
     assert patch["grass_fraction"] == 1.0
     assert patch["tree_fraction"] == 0.0
     assert patch["flower_fraction"] == 0.0
+
+
+def test_rename_shows_on_board_and_survives_relink(client):
+    uid = make_user(client, "renamer")
+
+    r = client.patch("/api/users/me", headers=auth(uid), json={"username": "CoolName"})
+    assert r.status_code == 200
+    assert r.json()["display_name"] == "CoolName"  # the board renders display_name
+
+    # Signing in again re-runs /users/link with Google's old display name —
+    # which must not clobber the chosen one.
+    make_user(client, "renamer")
+    board = client.get("/api/leaderboard").json()
+    row = next(e for e in board if e["username"] == "CoolName")
+    assert row["display_name"] == "CoolName"
