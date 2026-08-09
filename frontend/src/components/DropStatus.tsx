@@ -77,7 +77,7 @@ export function DropStatus({ drop, onTrigger, onReset, triggering, readOnly }: P
   if (live && drop?.has_submitted) {
     return (
       <div>
-        <div className="bg-turf-800/70 chalk-border rounded-2xl p-5">
+        <div className="bg-turf-800 chalk-border rounded-2xl p-5">
           <p className="font-display text-2xl tracking-wide text-turf-400 leading-none mb-1">
             YOU'RE IN THIS DROP
           </p>
@@ -91,7 +91,7 @@ export function DropStatus({ drop, onTrigger, onReset, triggering, readOnly }: P
   }
 
   return (
-    <div className="bg-turf-800/50 chalk-border rounded-2xl p-5 flex items-center justify-between gap-3">
+    <div className="bg-turf-800 chalk-border rounded-2xl p-5 flex items-center justify-between gap-3">
       <div className="min-w-0">
         <p className="font-display text-2xl tracking-wide text-chalk/50 leading-none mb-1">
           NO DROP LIVE

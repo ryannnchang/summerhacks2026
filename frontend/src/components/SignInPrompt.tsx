@@ -12,7 +12,7 @@ export function SignInPrompt({ title, body, returnTo }: Props) {
   const { signInWithGoogle, error } = useSession()
 
   return (
-    <div className="bg-turf-800/60 chalk-border rounded-2xl p-5 flex flex-col gap-3">
+    <div className="bg-turf-800 chalk-border rounded-2xl p-5 flex flex-col gap-3">
       <div>
         <p className="font-display text-2xl tracking-wide text-chalk leading-none">{title}</p>
         <p className="text-chalk/60 text-sm mt-1">{body}</p>

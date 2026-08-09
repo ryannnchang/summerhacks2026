@@ -88,14 +88,17 @@ export function MapPage() {
       />
 
       <div className="absolute top-4 left-4 right-4 z-[500] flex flex-col gap-3 max-w-xs pointer-events-none">
-        <div className="bg-turf-800/95 backdrop-blur-sm chalk-border rounded-2xl p-4 pointer-events-auto">
-          <h1 className="font-display text-2xl tracking-wide text-chalk leading-none">
+        {/* Light green fill inside a dark green border, matching the bottom nav.
+            The fill is light, so everything on it is dark green text — chalk
+            would vanish. Buttons stay dark green with the yellow accent. */}
+        <div className="bg-turf-300/95 backdrop-blur-sm border-2 border-dashed border-turf-800 rounded-2xl p-4 pointer-events-auto">
+          <h1 className="font-display text-2xl tracking-wide text-turf-900 leading-none">
             GRASS IN TORONTO
           </h1>
-          <p className="text-chalk/60 text-sm mt-1.5 mb-3">
+          <p className="text-turf-900/80 text-sm mt-1.5 mb-3">
             {data ? (
               <>
-                <span className="font-mono text-scoreboard font-bold text-lg">
+                <span className="font-mono text-turf-900 font-bold text-lg">
                   {mineOnly ? shown.length : data.patch_count}
                 </span>{' '}
                 {mineOnly ? 'of your patches' : `patch${data.patch_count === 1 ? '' : 'es'} touched`}
@@ -106,7 +109,7 @@ export function MapPage() {
           </p>
 
           {user && (
-            <div className="flex rounded-lg border border-chalk/20 overflow-hidden mb-2">
+            <div className="flex rounded-lg overflow-hidden mb-2 bg-turf-800">
               {([false, true] as const).map((mine) => (
                 <button
                   key={String(mine)}
@@ -121,7 +124,7 @@ export function MapPage() {
                   className={`flex-1 font-mono text-xs tracking-widest py-2 transition-colors ${
                     mineOnly === mine
                       ? 'bg-scoreboard text-turf-900 font-bold'
-                      : 'text-chalk/70 hover:text-chalk'
+                      : 'text-chalk hover:bg-turf-700'
                   }`}
                 >
                   {mine ? 'MINE' : 'GLOBAL'}
@@ -130,13 +133,13 @@ export function MapPage() {
             </div>
           )}
           {data?.patch_count === 0 && (
-            <p className="text-chalk/50 text-xs leading-relaxed mb-3">
+            <p className="text-turf-900/80 text-xs leading-relaxed mb-3">
               No grass logged yet. Pins appear here once submissions come in with a location.
             </p>
           )}
           <button
             onClick={findMe}
-            className="w-full border border-chalk/20 text-chalk/80 hover:text-chalk hover:border-chalk/40 font-mono text-xs tracking-widest py-2 rounded-lg transition-colors"
+            className="w-full bg-turf-800 hover:bg-turf-700 text-chalk font-mono text-xs tracking-widest py-2 rounded-lg transition-colors"
           >
             📍 NEAR ME
           </button>
@@ -147,27 +150,27 @@ export function MapPage() {
             className={`mt-2 w-full font-mono text-xs tracking-widest py-2 rounded-lg transition-colors ${
               showAccess
                 ? 'bg-scoreboard text-turf-900 font-bold'
-                : 'border border-chalk/20 text-chalk/80 hover:text-chalk hover:border-chalk/40'
+                : 'bg-turf-800 hover:bg-turf-700 text-chalk'
             }`}
           >
             🗺️ GREEN ACCESS
           </button>
 
           {showAccess && (
-            <div className="mt-3 pt-3 border-t border-chalk/10">
+            <div className="mt-3 pt-3 border-t border-turf-800/25">
               <button
                 onClick={() => setCityParks((on) => !on)}
                 aria-pressed={cityParks}
                 className={`w-full font-mono text-xs tracking-widest py-2 rounded-lg transition-colors mb-3 ${
                   cityParks
-                    ? 'bg-turf-500 text-turf-900 font-bold'
-                    : 'border border-chalk/20 text-chalk/80 hover:text-chalk hover:border-chalk/40'
+                    ? 'bg-scoreboard text-turf-900 font-bold'
+                    : 'bg-turf-800 hover:bg-turf-700 text-chalk'
                 }`}
               >
                 🌳 DEMO MODE
               </button>
 
-              <p className="text-chalk/70 text-[11px] leading-relaxed mb-2">
+              <p className="text-turf-900/80 text-[11px] leading-relaxed mb-2">
                 {cityParks
                   ? "Every park in Toronto, plus what players logged, fading out over a 400 m walk."
                   : 'A 400 m walk around every patch of grass someone has logged.'}
@@ -179,7 +182,7 @@ export function MapPage() {
                     'linear-gradient(90deg, #9aa19c 0%, #d8c860 34%, #9ccc51 67%, #1c7834 100%)',
                 }}
               />
-              <div className="flex justify-between mt-1 font-mono text-[9px] text-chalk/50">
+              <div className="flex justify-between mt-1 font-mono text-[9px] text-turf-900/70">
                 <span>EDGE OF REACH</span>
                 <span>WELL SERVED</span>
               </div>
@@ -191,17 +194,17 @@ export function MapPage() {
                       className="w-4 h-3 rounded-sm flex-shrink-0"
                       style={{ background: 'rgba(176,52,42,0.55)' }}
                     />
-                    <span className="font-mono text-[9px] text-chalk/60">
+                    <span className="font-mono text-[9px] text-turf-900/80">
                       NO GREEN SPACE WITHIN 400 m
                     </span>
                   </div>
-                  <p className="text-chalk/40 text-[10px] leading-relaxed mt-2">
+                  <p className="text-turf-900/70 text-[10px] leading-relaxed mt-2">
                     Park locations from OpenStreetMap. Red is a genuine gap — roughly a third of
                     the city.
                   </p>
                 </>
               ) : (
-                <p className="text-chalk/40 text-[10px] leading-relaxed mt-2">
+                <p className="text-turf-900/70 text-[10px] leading-relaxed mt-2">
                   Unshaded means no submissions yet — not necessarily no green space.
                 </p>
               )}

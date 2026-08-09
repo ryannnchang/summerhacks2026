@@ -59,7 +59,7 @@ export function AuthPage() {
           <p className="text-chalk/60 text-sm mt-3">Go outside. Get verified. Beat your group.</p>
         </div>
 
-        <div className="w-full flex flex-col gap-4 bg-turf-800/60 chalk-border rounded-2xl p-5">
+        <div className="w-full flex flex-col gap-4 bg-turf-800 chalk-border rounded-2xl p-5">
           <button
             onClick={() => void handleSignIn()}
             disabled={busy}

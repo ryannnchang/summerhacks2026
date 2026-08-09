@@ -31,10 +31,13 @@ export interface EloTier {
 // Bounds live on the tier objects rather than in eloTier()'s if-chain, because
 // the ladder needs to *draw* the bands and a second copy of the thresholds would
 // drift from the classifier the first time anyone retunes them.
+//
+// Colours are full-strength: the ladder reads through hue (brown -> chalk ->
+// green -> gold), not through opacity, which washed out on the lighter cards.
 const STINKY: EloTier = { name: 'Stinky', symbol: '💩', className: 'text-dirt-light', from: -Infinity, to: 500 } // prettier-ignore
 const HORRIBLE: EloTier = { name: 'Horrible', symbol: '🥀', className: 'text-dirt-light', from: 501, to: 999 } // prettier-ignore
-const SUBOPTIMAL: EloTier = { name: 'Suboptimal', symbol: '🌱', className: 'text-chalk/50', from: 1000, to: 1199 } // prettier-ignore
-const AVERAGE: EloTier = { name: 'Average', symbol: '🌿', className: 'text-chalk/70', from: 1200, to: 1200 } // prettier-ignore
+const SUBOPTIMAL: EloTier = { name: 'Suboptimal', symbol: '🌱', className: 'text-chalk', from: 1000, to: 1199 } // prettier-ignore
+const AVERAGE: EloTier = { name: 'Average', symbol: '🌿', className: 'text-chalk', from: 1200, to: 1200 } // prettier-ignore
 const GOOD: EloTier = { name: 'Good', symbol: '🍀', className: 'text-turf-400', from: 1201, to: 1400 } // prettier-ignore
 const GREAT: EloTier = { name: 'Great', symbol: '🌳', className: 'text-turf-400', from: 1401, to: 1600 } // prettier-ignore
 const GOAT: EloTier = { name: 'Goat', symbol: '🐐', className: 'text-scoreboard', from: 1601, to: 2000 } // prettier-ignore
@@ -44,7 +47,7 @@ const CHAD: EloTier = { name: 'Chad', symbol: '🗿', className: 'text-scoreboar
 const UNRANKED: EloTier = {
   name: 'Unranked',
   symbol: '·',
-  className: 'text-chalk/30',
+  className: 'text-chalk',
   from: NaN,
   to: NaN,
 }

@@ -122,7 +122,7 @@ export function RankedPage() {
         )}
       </div>
 
-      <div className="flex gap-1 p-1 bg-turf-800/60 rounded-xl mb-4">
+      <div className="flex gap-1 p-1 bg-turf-800 rounded-xl mb-4">
         {(['global', 'friends'] as const).map((value) => (
           <button
             key={value}

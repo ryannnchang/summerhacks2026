@@ -88,7 +88,7 @@ export function GrassMap({
 
     const instance = new mapboxgl.Map({
       container: container.current,
-      style: 'mapbox://styles/mapbox/dark-v11',
+      style: 'mapbox://styles/mapbox/light-v11',
       center: [center[1], center[0]],
       zoom,
       attributionControl: true,
@@ -104,6 +104,21 @@ export function GrassMap({
     )
 
     instance.on('load', () => {
+      // Tint the light basemap green — a grass game shouldn't sit on a grey
+      // city. Parks and green space get a stronger tint than the land behind
+      // them, so they still read as distinct. Wrapped because a style without
+      // these layer ids would otherwise throw and take the whole map down.
+      const tint = (layer: string, prop: 'background-color' | 'fill-color', color: string) => {
+        try {
+          if (instance.getLayer(layer)) instance.setPaintProperty(layer, prop, color)
+        } catch {
+          /* style changed shape; the untinted basemap is a fine fallback */
+        }
+      }
+      tint('land', 'background-color', '#e4efe0') // pale green ground
+      tint('national-park', 'fill-color', '#bfdcb0') // real green space, greener
+      tint('landuse', 'fill-color', '#cfe4c4')
+
       // Accessibility choropleth. Added before the patch source so it always
       // paints underneath, and starts hidden until the toggle asks for it.
       instance.addSource(ACCESS_SOURCE, {

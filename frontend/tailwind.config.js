@@ -11,8 +11,15 @@ export default {
           600: '#3B6E33',
           500: '#4A7C3C',
           400: '#6B9955',
+          300: '#8CB878', // a step lighter than 400 — the map card's fill
         },
         chalk: '#F5F1E4',
+        // The page's sky gradient, as named colours so cards can sit in it.
+        sky: {
+          DEFAULT: '#3D7DB8',
+          deep: '#2C5F95',
+          pale: '#5B9BCE',
+        },
         scoreboard: {
           DEFAULT: '#FFB627',
           dim: '#B5822A',

@@ -19,7 +19,7 @@ export function JoinGroupCard({ onJoined }: { onJoined: () => void }) {
   const [added, setAdded] = useState<string | null>(null)
 
   return (
-    <div className="bg-turf-800/60 chalk-border rounded-2xl p-5 flex flex-col gap-5">
+    <div className="bg-turf-800 chalk-border rounded-2xl p-5 flex flex-col gap-5">
       <div>
         <p className="font-display text-2xl tracking-wide text-chalk leading-none">ADD FRIENDS</p>
         <p className="text-chalk/60 text-sm mt-1">

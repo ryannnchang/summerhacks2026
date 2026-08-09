@@ -17,8 +17,8 @@ function formatDate(iso: string): string {
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex-1 bg-turf-800/60 chalk-border rounded-xl p-3 text-center">
-      <p className="text-chalk/50 text-[10px] font-mono tracking-wide">{label}</p>
+    <div className="flex-1 bg-turf-600 chalk-border rounded-xl p-3 text-center">
+      <p className="text-chalk/80 text-[10px] font-mono tracking-wide">{label}</p>
       <p className="font-mono text-chalk font-bold text-xl tabular-nums mt-0.5">{value}</p>
     </div>
   )
@@ -69,7 +69,7 @@ function PhotoModal({ submission, onClose }: { submission: Submission; onClose: 
                 className="w-16 h-16 grass-glyph"
                 dangerouslySetInnerHTML={{ __html: submission.glyph_svg ?? '' }}
               />
-              <p className="text-chalk/60 text-sm">
+              <p className="text-chalk/80 text-sm">
                 This photo was uploaded from another device and isn't stored on the server.
               </p>
             </div>
@@ -97,7 +97,7 @@ function PhotoModal({ submission, onClose }: { submission: Submission; onClose: 
               {submission.total_score.toFixed(0)}
             </p>
           </div>
-          <p className="text-chalk/40 text-[10px]">{formatDate(submission.submitted_at)}</p>
+          <p className="text-chalk/70 text-[10px]">{formatDate(submission.submitted_at)}</p>
           {submission.reject_reason && (
             <p className="text-dirt-light text-xs">{submission.reject_reason}</p>
           )}
@@ -216,13 +216,13 @@ export function ProfilePage() {
                   <p className="font-mono text-chalk font-bold truncate">{me.username}</p>
                   <button
                     onClick={() => setEditing(true)}
-                    className="text-chalk/40 hover:text-chalk text-xs font-mono shrink-0"
+                    className="text-chalk/70 hover:text-chalk text-xs font-mono shrink-0"
                   >
                     EDIT
                   </button>
                 </div>
               )}
-              <p className="text-chalk/50 text-xs truncate mt-0.5">{session?.user.email}</p>
+              <p className="text-chalk/80 text-xs truncate mt-0.5">{session?.user.email}</p>
               {saveError && (
                 <p className="text-dirt-light text-xs mt-1" role="alert">
                   {saveError}
@@ -239,7 +239,7 @@ export function ProfilePage() {
 
           {/* The rating is four digits of nothing until you know where it sits on the ladder. */}
           <div className="flex flex-col gap-2.5 mb-6">
-            <div className="flex items-center gap-2.5 rounded-xl bg-turf-800/70 chalk-border p-3">
+            <div className="flex items-center gap-2.5 rounded-xl bg-turf-600 chalk-border p-3">
               <span className={`text-2xl leading-none ${eloTier(me.elo).className}`} aria-hidden>
                 {eloTier(me.elo).symbol}
               </span>
@@ -247,7 +247,7 @@ export function ProfilePage() {
                 <p className={`font-display text-xl tracking-wide leading-none ${eloTier(me.elo).className}`}>
                   {eloTier(me.elo).name.toUpperCase()}
                 </p>
-                <p className="text-chalk/40 text-[10px] font-mono mt-1">
+                <p className="text-chalk/70 text-[10px] font-mono mt-1">
                   {me.elo === null
                     ? 'NO RATING YET'
                     : me.elo === BASE_RATING
@@ -264,7 +264,7 @@ export function ProfilePage() {
                 className={`ml-auto shrink-0 self-stretch px-3 rounded-lg font-mono text-[10px] tracking-widest transition-colors ${
                   showRanks
                     ? 'bg-scoreboard text-turf-900'
-                    : 'border border-chalk/20 text-chalk/60 hover:text-chalk hover:border-chalk/40'
+                    : 'bg-turf-800 hover:bg-turf-700 text-chalk'
                 }`}
               >
                 RANKS
@@ -274,18 +274,20 @@ export function ProfilePage() {
             {showRanks && <EloLadder elo={me.elo} />}
           </div>
 
-          <h2 className="font-mono text-chalk/50 text-xs tracking-[0.2em] mb-3">YOUR FIELD</h2>
+          <h2 className="font-mono text-chalk/80 text-xs tracking-[0.2em] mb-3">YOUR FIELD</h2>
           {history === null ? (
-            <p className="font-mono text-chalk/40 text-sm">loading…</p>
+            <p className="font-mono text-chalk/70 text-sm">loading…</p>
           ) : history.length === 0 ? (
-            <p className="text-chalk/50 text-sm">
+            <p className="text-chalk/80 text-sm">
               Bare dirt so far. Touch some grass when the next drop fires.
             </p>
           ) : (
             <>
               {/* Every verified drop is a tuft, standing on a shared ground line.
-                  Size tracks quality, so a good patch literally grows taller. */}
-              <div className="relative">
+                  Size tracks quality, so a good patch literally grows taller.
+                  The panel is 2nd-place green — a shade lighter than the cards
+                  above, so the tufts have ground to stand on. */}
+              <div className="relative rounded-2xl bg-turf-500 chalk-border p-3">
                 <div className="relative flex flex-wrap items-end justify-center gap-x-1 gap-y-3">
                   {history.map((s) => {
                     const verified = s.status === 'verified'
@@ -312,7 +314,7 @@ export function ProfilePage() {
                 </div>
               </div>
 
-              <p className="text-chalk/40 text-xs mt-2 text-center">
+              <p className="text-chalk/70 text-xs mt-2 text-center">
                 {history.filter((s) => s.status === 'verified').length} thriving ·{' '}
                 {history.filter((s) => s.status !== 'verified').length} withered · tap a patch for
                 the photo
