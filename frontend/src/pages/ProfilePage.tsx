@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import { api, ApiError } from '../api/client'
+import { EloLadder } from '../components/EloLadder'
 import { useSession } from '../hooks/useSession'
 import { BASE_RATING, eloTier } from '../lib/eloTiers'
 import type { Submission, User } from '../types'
@@ -114,6 +115,7 @@ function PhotoModal({ submission, onClose }: { submission: Submission; onClose: 
 export function ProfilePage() {
   const { session, signOut } = useSession()
   const [selected, setSelected] = useState<Submission | null>(null)
+  const [showRanks, setShowRanks] = useState(false)
 
   // Fetched fresh rather than read from the session context, so the elo and
   // score reflect the latest submission, not the sign-in snapshot.
@@ -236,22 +238,40 @@ export function ProfilePage() {
           </div>
 
           {/* The rating is four digits of nothing until you know where it sits on the ladder. */}
-          <div className="flex items-center gap-2.5 mb-6 rounded-xl bg-turf-800/70 chalk-border p-3">
-            <span className={`text-2xl leading-none ${eloTier(me.elo).className}`} aria-hidden>
-              {eloTier(me.elo).symbol}
-            </span>
-            <div className="min-w-0">
-              <p className={`font-display text-xl tracking-wide leading-none ${eloTier(me.elo).className}`}>
-                {eloTier(me.elo).name.toUpperCase()}
-              </p>
-              <p className="text-chalk/40 text-[10px] font-mono mt-1">
-                {me.elo === null
-                  ? 'NO RATING YET'
-                  : me.elo === BASE_RATING
-                    ? `${me.elo} · STARTING RATING`
-                    : `${me.elo} · ${me.elo > BASE_RATING ? '+' : ''}${me.elo - BASE_RATING} FROM BASE`}
-              </p>
+          <div className="flex flex-col gap-2.5 mb-6">
+            <div className="flex items-center gap-2.5 rounded-xl bg-turf-800/70 chalk-border p-3">
+              <span className={`text-2xl leading-none ${eloTier(me.elo).className}`} aria-hidden>
+                {eloTier(me.elo).symbol}
+              </span>
+              <div className="min-w-0">
+                <p className={`font-display text-xl tracking-wide leading-none ${eloTier(me.elo).className}`}>
+                  {eloTier(me.elo).name.toUpperCase()}
+                </p>
+                <p className="text-chalk/40 text-[10px] font-mono mt-1">
+                  {me.elo === null
+                    ? 'NO RATING YET'
+                    : me.elo === BASE_RATING
+                      ? `${me.elo} · STARTING RATING`
+                      : `${me.elo} · ${me.elo > BASE_RATING ? '+' : ''}${me.elo - BASE_RATING} FROM BASE`}
+                </p>
+              </div>
+
+              {/* Collapsed by default: the ladder is reference material, and the
+                  profile's own subject is the rank you already hold. */}
+              <button
+                onClick={() => setShowRanks((open) => !open)}
+                aria-expanded={showRanks}
+                className={`ml-auto shrink-0 self-stretch px-3 rounded-lg font-mono text-[10px] tracking-widest transition-colors ${
+                  showRanks
+                    ? 'bg-scoreboard text-turf-900'
+                    : 'border border-chalk/20 text-chalk/60 hover:text-chalk hover:border-chalk/40'
+                }`}
+              >
+                RANKS
+              </button>
             </div>
+
+            {showRanks && <EloLadder elo={me.elo} />}
           </div>
 
           <h2 className="font-mono text-chalk/50 text-xs tracking-[0.2em] mb-3">YOUR FIELD</h2>
