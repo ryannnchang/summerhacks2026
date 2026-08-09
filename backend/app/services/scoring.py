@@ -4,6 +4,12 @@ QUALITY_WEIGHT = 0.6
 SPEED_WEIGHT = 0.4
 MAX_POINTS = 100.0
 
+# Consolation points for a rejected photo: showing up beats sitting it out.
+# Deliberately below elo par (50), so a rejection still costs rating — just less
+# than a no-show would. It never gets the streak multiplier; a rejection still
+# resets the streak to zero.
+REJECTED_POINTS = 15.0
+
 # Full speed credit inside this many seconds, zero credit once the window closes.
 INSTANT_SECONDS = 120.0
 

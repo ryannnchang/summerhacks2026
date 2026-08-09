@@ -22,8 +22,97 @@ function Stat({ label, value }: { label: string; value: string }) {
   )
 }
 
+/**
+ * The photo behind a tuft.
+ *
+ * Photos can be unreachable: a submission uploaded from a teammate's machine
+ * without a storage key wrote its file to *their* disk, so the row points at a
+ * path this server can't serve. The onError fallback keeps that a shrug rather
+ * than a broken-image icon.
+ */
+function PhotoModal({ submission, onClose }: { submission: Submission; onClose: () => void }) {
+  const [broken, setBroken] = useState(false)
+  const verified = submission.status === 'verified'
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-turf-900/90 flex items-center justify-center p-5"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+    >
+      <div
+        className="relative w-full max-w-[16rem] bg-turf-800 chalk-border-solid rounded-2xl overflow-hidden animate-popin"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Sits outside the card's top-right corner, clear of the photo. */}
+        <button
+          onClick={onClose}
+          aria-label="Close"
+          className="absolute -top-3 -right-3 z-10 w-8 h-8 rounded-full bg-chalk text-turf-900 font-bold text-sm leading-none shadow-lg hover:bg-white transition-colors"
+        >
+          ✕
+        </button>
+
+        <div className="relative aspect-square bg-turf-900">
+          {broken ? (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-6 text-center">
+              <div
+                className="w-16 h-16 grass-glyph"
+                dangerouslySetInnerHTML={{ __html: submission.glyph_svg ?? '' }}
+              />
+              <p className="text-chalk/60 text-sm">
+                This photo was uploaded from another device and isn't stored on the server.
+              </p>
+            </div>
+          ) : (
+            <img
+              src={submission.image_url}
+              alt={`Drop #${submission.drop_id}`}
+              onError={() => setBroken(true)}
+              className="w-full h-full object-cover"
+            />
+          )}
+          <div
+            className={`absolute top-3 right-3 px-3 py-1 rounded-full font-display text-sm tracking-wide ${
+              verified ? 'bg-turf-500 text-turf-900' : 'bg-dirt text-chalk'
+            }`}
+          >
+            {verified ? 'VERIFIED' : 'REJECTED'}
+          </div>
+        </div>
+
+        <div className="p-3 flex flex-col gap-1.5">
+          <div className="flex items-baseline justify-between">
+            <p className="font-mono text-xs text-chalk">Drop #{submission.drop_id}</p>
+            <p className="font-mono text-xl font-bold text-scoreboard tabular-nums">
+              {submission.total_score.toFixed(0)}
+            </p>
+          </div>
+          <p className="text-chalk/40 text-[10px]">{formatDate(submission.submitted_at)}</p>
+          {submission.reject_reason && (
+            <p className="text-dirt-light text-xs">{submission.reject_reason}</p>
+          )}
+          <dl className="grid grid-cols-3 gap-2 pt-2 border-t border-chalk/10 text-center">
+            <Stat label="QUALITY" value={submission.quality_score.toFixed(0)} />
+            <Stat label="SPEED" value={submission.speed_score.toFixed(0)} />
+            <Stat label="TIME" value={`${submission.response_seconds.toFixed(0)}s`} />
+          </dl>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function ProfilePage() {
   const { session, signOut } = useSession()
+  const [selected, setSelected] = useState<Submission | null>(null)
 
   // Fetched fresh rather than read from the session context, so the elo and
   // score reflect the latest submission, not the sign-in snapshot.
@@ -145,46 +234,51 @@ export function ProfilePage() {
             <Stat label="STREAK" value={String(me.streak)} />
           </div>
 
-          <h2 className="font-mono text-chalk/50 text-xs tracking-[0.2em] mb-3">PAST DROPS</h2>
+          <h2 className="font-mono text-chalk/50 text-xs tracking-[0.2em] mb-3">YOUR FIELD</h2>
           {history === null ? (
             <p className="font-mono text-chalk/40 text-sm">loading…</p>
           ) : history.length === 0 ? (
             <p className="text-chalk/50 text-sm">
-              No drops logged yet. Touch some grass when the next one fires.
+              Bare dirt so far. Touch some grass when the next drop fires.
             </p>
           ) : (
-            <ul className="flex flex-col gap-2.5">
-              {history.map((s) => (
-                <li
-                  key={s.id}
-                  className="flex items-center gap-3 bg-turf-800/60 chalk-border rounded-xl p-2.5"
-                >
-                  <img
-                    src={s.thumbnail_url}
-                    alt=""
-                    className="w-12 h-12 rounded-lg object-cover shrink-0"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <p className="font-mono text-sm text-chalk">
-                      Drop #{s.drop_id}
-                      <span
-                        className={`ml-2 text-[10px] px-1.5 py-0.5 rounded-full align-middle ${
-                          s.status === 'verified'
-                            ? 'bg-turf-500/30 text-turf-400'
-                            : 'bg-dirt/40 text-dirt-light'
+            <>
+              {/* Every verified drop is a tuft, standing on a shared ground line.
+                  Size tracks quality, so a good patch literally grows taller. */}
+              <div className="relative rounded-2xl chalk-border overflow-hidden bg-gradient-to-b from-turf-900 via-turf-800 to-turf-700">
+                <div className="absolute inset-x-0 bottom-0 h-10 bg-turf-600/40" />
+                <div className="relative flex flex-wrap items-end justify-center gap-x-1 gap-y-2 px-3 pt-8 pb-3 min-h-[9rem]">
+                  {history.map((s) => {
+                    const verified = s.status === 'verified'
+                    // 34px at score 0 up to 68px at 100 — a visible spread.
+                    // Rejections draw at a fixed small size: they're dead either way.
+                    const size = verified ? 34 + Math.min(s.quality_score, 100) * 0.34 : 38
+                    if (!s.glyph_svg) return null
+                    return (
+                      <button
+                        key={s.id}
+                        onClick={() => setSelected(s)}
+                        title={`Drop #${s.drop_id} · ${
+                          verified ? '' : 'rejected · '
+                        }${s.total_score.toFixed(0)} pts · ${formatDate(s.submitted_at)}`}
+                        aria-label={`View photo from drop ${s.drop_id}`}
+                        style={{ width: size, height: size }}
+                        className={`grass-glyph shrink-0 transition-transform hover:-translate-y-1 focus:outline-none focus:-translate-y-1 cursor-pointer ${
+                          verified ? '' : 'opacity-80'
                         }`}
-                      >
-                        {s.status === 'verified' ? 'VERIFIED' : 'REJECTED'}
-                      </span>
-                    </p>
-                    <p className="text-chalk/40 text-xs mt-0.5">{formatDate(s.submitted_at)}</p>
-                  </div>
-                  <p className="font-mono text-scoreboard font-bold tabular-nums shrink-0">
-                    {s.status === 'verified' ? s.total_score.toFixed(0) : '0'}
-                  </p>
-                </li>
-              ))}
-            </ul>
+                        dangerouslySetInnerHTML={{ __html: s.glyph_svg }}
+                      />
+                    )
+                  })}
+                </div>
+              </div>
+
+              <p className="text-chalk/40 text-xs mt-2 text-center">
+                {history.filter((s) => s.status === 'verified').length} thriving ·{' '}
+                {history.filter((s) => s.status !== 'verified').length} withered · tap a patch for
+                the photo
+              </p>
+            </>
           )}
 
           <button
@@ -195,6 +289,8 @@ export function ProfilePage() {
           </button>
         </>
       )}
+
+      {selected && <PhotoModal submission={selected} onClose={() => setSelected(null)} />}
     </main>
   )
 }

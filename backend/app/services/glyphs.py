@@ -9,7 +9,8 @@ Style: flat vector, matching the app's fruit-sticker look — chunky filled
 shapes, no outlines, white oval speck highlights.
 
 Signal -> parameter map:
-  lushness      blade count and height
+  lushness      blade count and height; below WILT_BELOW it also drives the
+                straw palette, the droop, and the loss of sheen
   biodiversity  lean/curve wildness, bonus wildflower
   palette       blade colors (Gemini) or shades derived from dominant_color
   features      which flora appear: clover, dandelion, flower/daisy, moss
@@ -24,7 +25,7 @@ import json
 import math
 import random
 
-from app.models import Submission
+from app.models import Submission, SubmissionStatus
 
 VIEW = 64  # square viewBox
 BASE_Y = 58.0  # where the tuft meets the ground
@@ -34,6 +35,11 @@ DEFAULT_GREENS = ["#2d5a27", "#4a7c3c", "#6b9955"]
 FLOWER_YELLOW = "#f2c94c"
 PETAL_WHITE = "#f5f1e4"
 SPECK_WHITE = "#ffffff"
+
+# Wilting. Lushness at or above this draws a healthy tuft; below it the blades
+# fade toward straw and bend over, reaching full wilt at 0.
+WILT_BELOW = 35.0
+STRAW = (198, 163, 92)  # what dead grass fades to
 
 
 def _hex_to_rgb(color: str) -> tuple[int, int, int]:
@@ -50,6 +56,13 @@ def _clamp01(value: float) -> float:
     return max(0.0, min(1.0, value))
 
 
+def _wither(color: str, amount: float) -> str:
+    """Fades a blade color toward straw. `amount` 0 leaves it, 1 is fully dead."""
+    r, g, b = _hex_to_rgb(color)
+    mixed = tuple(round(c + (s - c) * amount) for c, s in zip((r, g, b), STRAW))
+    return "#{:02x}{:02x}{:02x}".format(*mixed)
+
+
 def make_glyph(
     *,
     seed: int,
@@ -62,7 +75,14 @@ def make_glyph(
     lush = _clamp01(lushness / 100.0)
     bio = _clamp01(biodiversity / 100.0)
 
-    colors = palette or DEFAULT_GREENS
+    # 0 at WILT_BELOW and above, ramping to 1 at lushness 0. Everything about
+    # a dying tuft — color, droop, sheen, flowers — keys off this one number.
+    wilt = _clamp01((WILT_BELOW - lushness) / WILT_BELOW)
+    dying = wilt > 0.0
+
+    colors = [_wither(c, wilt) for c in (palette or DEFAULT_GREENS)] if dying else (
+        palette or DEFAULT_GREENS
+    )
     darkest = _shade(min(colors, key=lambda c: sum(_hex_to_rgb(c))), 0.8)
     tags = [f.lower() for f in features]
 
@@ -101,6 +121,13 @@ def make_glyph(
         x0 = 32 + (t - 0.5) * 2 * rng.uniform(0.7, 1.0) * 9
         height = (16 + 24 * lush) * rng.uniform(0.75, 1.05)
         lean = rng.uniform(-1, 1) * (2.5 + 8 * bio)
+        if dying:
+            # Dead blades fold over: they lose height and lean away from centre.
+            # The lean is capped so the tip stays inside the viewBox — an
+            # unclamped droop flings blades off-canvas and the tuft renders empty.
+            lean += math.copysign(1.0, lean or 1.0) * 7 * wilt * rng.uniform(0.7, 1.2)
+            height *= 1.0 - 0.4 * wilt
+            lean = max(min(lean, 60 - x0), 4 - x0)
         half = rng.uniform(1.7, 3.0)
         tip_x, tip_y = x0 + lean, BASE_Y - height
         mid_y = BASE_Y - height * 0.5
@@ -113,8 +140,10 @@ def make_glyph(
         )
         blades.append((x0, height, lean, tip_x))
 
-    # White speck highlights — the signature of the sticker style.
-    for x0, height, lean, tip_x in rng.sample(blades, k=min(3, len(blades))):
+    # White speck highlights — the signature of the sticker style. Dead grass
+    # has no sheen to catch, so a fully wilted tuft gets none.
+    speck_count = round(min(3, len(blades)) * (1.0 - wilt))
+    for x0, height, lean, tip_x in rng.sample(blades, k=speck_count):
         frac = rng.uniform(0.4, 0.65)
         hx = x0 + (tip_x - x0) * frac
         hy = BASE_Y - height * frac
@@ -154,8 +183,10 @@ def make_glyph(
 
     # Flowers: dandelions get a fat yellow head with a speck, daisies get
     # petals. High biodiversity earns a wildflower even without a tag.
+    # Nothing blooms on a dying patch, so the biodiversity bonus is withdrawn —
+    # but an explicitly tagged flower still draws, since the judge saw one.
     wants_flower = has("dandelion", "flower", "daisy", "bloom", "wildflower")
-    if wants_flower or bio >= 0.6:
+    if wants_flower or (bio >= 0.6 and not dying):
         for _ in range(rng.randint(1, 2 if bio >= 0.5 else 1)):
             fx = 32 + rng.uniform(-11, 11)
             fy = BASE_Y - (20 + 22 * lush) * rng.uniform(0.8, 1.0)
@@ -201,9 +232,15 @@ def for_submission(submission: Submission) -> str:
             [_shade(base, 0.75), base, _shade(base, 1.25)] if base else DEFAULT_GREENS
         )
 
-    lushness = (
-        submission.lushness if submission.lushness is not None else submission.quality_score
-    )
+    # A rejection always draws fully dead, whatever the judge scored. Gemini
+    # happily rates artificial turf as lush, so keying this off the signal
+    # rather than the verdict would grow a thriving tuft for a plastic lawn.
+    if submission.status == SubmissionStatus.REJECTED:
+        lushness = 0.0
+    else:
+        lushness = (
+            submission.lushness if submission.lushness is not None else submission.quality_score
+        )
     biodiversity = (
         submission.biodiversity
         if submission.biodiversity is not None

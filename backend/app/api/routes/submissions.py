@@ -15,7 +15,7 @@ from app.services import mural as mural_service
 from app.services.drop_scheduler import as_utc
 from app.services.events import manager
 from app.services.grass_verifier import verify_grass
-from app.services.scoring import speed_score, total_score
+from app.services.scoring import REJECTED_POINTS, speed_score, total_score
 
 router = APIRouter(tags=["submissions"])
 
@@ -140,8 +140,14 @@ async def submit_grass(
     else:
         submission.status = SubmissionStatus.REJECTED
         submission.reject_reason = verdict.reason
+        # Turning up still counts for something, but the streak is gone and the
+        # patch never reaches the mural or the public map.
+        submission.total_score = REJECTED_POINTS
+        user.total_score += REJECTED_POINTS
         user.streak = 0
         db.add(submission)
+        db.flush()  # assigns the id, which seeds the glyph
+        submission.glyph_svg = glyphs.for_submission(submission)
 
     # Mirror onto the leaderboard row in the same transaction, so the two can't
     # drift. Elo settles here too: above par gains rating, below par (including
@@ -200,4 +206,14 @@ def my_submissions(db: DbSession, user: CurrentUser, limit: int = 50) -> list[Su
         .limit(min(limit, 200))
         .all()
     )
+
+    # Lazy backfill, same as the map: the profile draws glyphs, not photos, so a
+    # row from before glyphs existed would otherwise show an empty patch.
+    # Rejections included — they draw as dead tufts.
+    missing = [s for s in rows if s.glyph_svg is None]
+    if missing:
+        for s in missing:
+            s.glyph_svg = glyphs.for_submission(s)
+        db.commit()
+
     return [_to_out(s, user.username) for s in rows]

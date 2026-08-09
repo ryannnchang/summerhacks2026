@@ -550,3 +550,58 @@ def test_add_friend_by_email(client):
     assert (
         client.post("/api/users/friends", headers=headers, json={"email": "buddy@test.com"})
     ).status_code == 201
+
+
+def test_glyph_wilts_when_lushness_is_low():
+    from app.services.glyphs import WILT_BELOW, make_glyph
+
+    args = dict(seed=3, palette=["#2d5a27", "#4a7c3c"], features=[], biodiversity=55)
+    dead = make_glyph(lushness=0, **args)
+    alive = make_glyph(lushness=90, **args)
+
+    # Dead grass loses its sheen; a healthy tuft keeps the white specks.
+    assert "#ffffff" not in dead
+    assert "#ffffff" in alive
+    # ...and none of the green it was given survives the fade to straw.
+    assert "#2d5a27" not in dead
+    assert "#2d5a27" in alive
+
+    # Blades stay inside the 64-unit viewBox even at full droop, or the tuft
+    # renders empty. Every coordinate in the path data must be on-canvas.
+    import re
+
+    coords = [float(n) for n in re.findall(r"-?\d+\.?\d*", dead.split("<path", 1)[1])]
+    assert all(-1 <= c <= 65 for c in coords), coords
+
+    # At the threshold nothing has wilted yet.
+    assert make_glyph(lushness=WILT_BELOW, **args) == make_glyph(lushness=WILT_BELOW, **args)
+    assert "#2d5a27" in make_glyph(lushness=WILT_BELOW, **args)
+
+
+def test_rejection_earns_consolation_points_and_a_dead_glyph(client):
+    from app.services.scoring import REJECTED_POINTS
+
+    uid = make_user(client, "trier")
+    headers = {"X-User-Id": str(uid)}
+    drop = client.post("/api/drops/trigger", headers=headers).json()
+
+    r = client.post(
+        f"/api/drops/{drop['id']}/submissions",
+        headers=headers,
+        files={"photo": ("x.jpg", not_grass(), "image/jpeg")},
+    ).json()
+
+    assert r["status"] == "rejected"
+    assert r["total_score"] == REJECTED_POINTS  # showing up still pays
+    assert r["glyph_svg"], "a rejection should still grow a (dead) tuft"
+    assert "#ffffff" not in r["glyph_svg"], "dead grass has no sheen"
+    # Still a rating loss, just softer than a zero would be.
+    assert -32 < r["elo_delta"] < 0
+
+    me = client.get("/api/users/me", headers=headers).json()
+    assert me["total_score"] == REJECTED_POINTS
+    assert me["streak"] == 0  # the streak is still gone
+
+    # But it never reaches the shared surfaces.
+    assert client.get("/api/mural").json()["tile_count"] == 0
+    assert client.get("/api/map/patches").json()["patch_count"] == 0
