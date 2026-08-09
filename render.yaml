@@ -18,10 +18,5 @@ services:
         sync: false
       - key: GEMINI_API_KEY
         sync: false
-      # Client-side values, needed at BUILD time (baked into the JS bundle).
-      - key: VITE_SUPABASE_URL
-        value: https://telssixwqcboqxodcsvt.supabase.co
-      - key: VITE_SUPABASE_ANON_KEY
-        sync: false
-      - key: VITE_MAPBOX_TOKEN
-        sync: false
+      # Client-side VITE_* values come from the committed .env.production —
+      # nothing to configure here.

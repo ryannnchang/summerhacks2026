@@ -13,3 +13,4 @@ frontend/dist
 docs
 **/__pycache__
 **/.DS_Store
+!.env.production

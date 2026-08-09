@@ -10,24 +10,20 @@
 
 # ---- Stage 1: frontend build -------------------------------------------------
 FROM node:20-slim AS web
-WORKDIR /build
+WORKDIR /src/frontend
 
-# VITE_* values are compiled INTO the bundle — they must exist at build time,
-# not run time. Render/Fly pass service env vars into Docker builds for any
-# ARG declared here. All three are public client-side values (anon key, map
-# token), not secrets.
-ARG VITE_SUPABASE_URL
-ARG VITE_SUPABASE_ANON_KEY
-ARG VITE_MAPBOX_TOKEN
-ENV VITE_SUPABASE_URL=$VITE_SUPABASE_URL \
-    VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY \
-    VITE_MAPBOX_TOKEN=$VITE_MAPBOX_TOKEN
+# VITE_* values are compiled INTO the bundle at build time and come from the
+# committed .env.production (all three are public client-side values — anon
+# key, map token — not secrets). Deliberately NOT ARG-overridable: declaring
+# unset ARGs as ENV exports them as *empty strings*, and Vite lets process env
+# outrank .env files — which silently blanked every value and shipped a bundle
+# that throws on load. One source of truth, the file.
 
 COPY frontend/package*.json ./
 RUN npm ci
+# vite.config.ts reads env from '..' — the same layout as the repo checkout.
+COPY .env.production /src/
 COPY frontend/ ./
-# vite.config.ts reads env from '..' in dev; in the image the ARG-derived ENV
-# vars above are what import.meta.env picks up.
 RUN npm run build
 
 # ---- Stage 2: backend runtime ------------------------------------------------
@@ -38,7 +34,7 @@ COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY backend/app ./app
-COPY --from=web /build/dist ./static
+COPY --from=web /src/frontend/dist ./static
 
 EXPOSE 8000
 

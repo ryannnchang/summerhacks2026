@@ -29,3 +29,6 @@ dist/
 # Build artifacts that churn on every compile
 *.tsbuildinfo
 vite.config.ts.timestamp-*.mjs
+
+# Public client-side build values — deliberately committed (see file header).
+!.env.production
