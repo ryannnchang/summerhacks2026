@@ -108,6 +108,9 @@ export interface MapPatch {
   quality_score: number
   submitted_at: string
   glyph_svg: string | null
+  /** Rejections appear on the map too, drawn as dead tufts. */
+  status: 'verified' | 'rejected'
+  reject_reason: string | null
 }
 
 export interface MapData {

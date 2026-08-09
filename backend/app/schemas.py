@@ -158,6 +158,9 @@ class MapPatch(BaseModel):
     quality_score: float
     submitted_at: datetime
     glyph_svg: str | None = None
+    # Rejections are mapped too, as dead tufts.
+    status: str = "verified"
+    reject_reason: str | None = None
 
 
 class MapOut(BaseModel):

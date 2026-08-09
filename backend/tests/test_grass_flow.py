@@ -602,6 +602,26 @@ def test_rejection_earns_consolation_points_and_a_dead_glyph(client):
     assert me["total_score"] == REJECTED_POINTS
     assert me["streak"] == 0  # the streak is still gone
 
-    # But it never reaches the shared surfaces.
+    # The mural stays verified-only; the map takes everything geolocated.
     assert client.get("/api/mural").json()["tile_count"] == 0
-    assert client.get("/api/map/patches").json()["patch_count"] == 0
+    assert client.get("/api/map/patches").json()["patch_count"] == 0  # no coords sent
+
+
+def test_map_shows_rejections_as_dead_tufts(client):
+    uid = make_user(client, "wanderer")
+    headers = {"X-User-Id": str(uid)}
+    drop = client.post("/api/drops/trigger", headers=headers).json()
+
+    client.post(
+        f"/api/drops/{drop['id']}/submissions",
+        headers=headers,
+        files={"photo": ("x.jpg", not_grass(), "image/jpeg")},
+        data={"latitude": "43.6465", "longitude": "-79.4130"},
+    )
+
+    body = client.get("/api/map/patches").json()
+    assert body["patch_count"] == 1, "a rejection with coords still marks the map"
+    patch = body["patches"][0]
+    assert patch["status"] == "rejected"
+    assert patch["reject_reason"]
+    assert patch["glyph_svg"] and "#ffffff" not in patch["glyph_svg"]  # dead: no sheen
