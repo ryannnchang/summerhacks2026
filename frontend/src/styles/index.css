@@ -32,6 +32,27 @@ body {
   background-attachment: fixed;
 }
 
+/* Ground-plane chevrons for the capture screen's park compass. They flow away
+   from the viewer, which is what sells "painted on the pavement ahead" — a
+   static arrow tilted in perspective just looks like a squashed triangle. */
+@keyframes chevron-flow {
+  0% {
+    opacity: 0;
+    transform: translateY(28px) scale(0.75);
+  }
+  25% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-46px) scale(1.15);
+  }
+}
+
+.chevron-flow {
+  animation: chevron-flow 1.8s linear infinite;
+}
+
 /* Chalk-line dashed border, used for "field marking" style cards */
 .chalk-border {
   border: 2px dashed rgba(245, 241, 228, 0.35);
